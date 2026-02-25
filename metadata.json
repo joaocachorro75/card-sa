@@ -1,0 +1,5 @@
+{
+  "name": "MaisQueCardapio - Sistema de Gestão e Pedidos",
+  "description": "Sistema completo para lanchonetes com pedidos online, delivery por bairro, QR Code para mesas, gestão de comandas e painel administrativo.",
+  "requestFramePermissions": []
+}
