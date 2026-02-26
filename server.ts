@@ -4,6 +4,10 @@ import mysql from "mysql2/promise";
 import path from "path";
 import { fileURLToPath } from "url";
 import axios from "axios";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -182,6 +186,63 @@ initDatabase();
 
 const app = express();
 app.use(express.json());
+
+// JWT Configuration
+const JWT_SECRET = process.env.JWT_SECRET || "superadmin-jwt-secret-change-in-production";
+const SUPERADMIN_USER = process.env.SUPERADMIN_USER || "superadmin";
+const SUPERADMIN_PASSWORD = process.env.SUPERADMIN_PASSWORD || "admin123";
+
+// SuperAdmin Auth Middleware
+const superAdminAuthMiddleware = (req: any, res: any, next: any) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.replace("Bearer ", "");
+  
+  if (!token) {
+    return res.status(401).json({ error: "Token não fornecido. Acesso não autorizado." });
+  }
+  
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: "Token inválido ou expirado." });
+  }
+};
+
+// SuperAdmin Login Endpoint (public - no auth required)
+app.post("/api/superadmin/login", async (req, res) => {
+  const { username, password } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username e password são obrigatórios." });
+  }
+  
+  if (username === SUPERADMIN_USER && password === SUPERADMIN_PASSWORD) {
+    const token = jwt.sign(
+      { role: "superadmin", username },
+      JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+    res.json({ token, message: "Login realizado com sucesso." });
+  } else {
+    res.status(401).json({ error: "Credenciais inválidas." });
+  }
+});
+
+// Verify token endpoint
+app.get("/api/superadmin/verify", async (req: any, res) => {
+  res.json({ valid: true, user: req.user });
+});
+
+// Protect all /api/superadmin routes (except login which is defined above)
+app.use("/api/superadmin", (req: any, res: any, next: any) => {
+  // Skip auth for login endpoint
+  if (req.path === "/login" && req.method === "POST") {
+    return next();
+  }
+  return superAdminAuthMiddleware(req, res, next);
+});
 
 // Health check endpoint
 app.get("/health", async (req, res) => {
