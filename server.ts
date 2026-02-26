@@ -25,7 +25,7 @@ try {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
-    owner_email TEXT NOT NULL,
+    owner_whatsapp TEXT NOT NULL,
     password TEXT NOT NULL,
     plan_id INTEGER,
     status TEXT DEFAULT 'active',
@@ -96,6 +96,18 @@ try {
     FOREIGN KEY (table_id) REFERENCES tables(id)
   );
 
+  CREATE TABLE IF NOT EXISTS customers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    establishment_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    password TEXT NOT NULL,
+    address TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (establishment_id) REFERENCES establishments(id),
+    UNIQUE(establishment_id, phone)
+  );
+
   CREATE TABLE IF NOT EXISTS settings (
     establishment_id INTEGER NOT NULL,
     key TEXT NOT NULL,
@@ -130,8 +142,8 @@ if (planCount.count === 0) {
   db.prepare("INSERT INTO plans (name, price, max_products, enable_ai, enable_reservations, enable_automation) VALUES (?, ?, ?, ?, ?, ?)")
     .run("Premium", 49.90, 100, 1, 1, 1);
   
-  db.prepare("INSERT INTO establishments (name, slug, owner_email, password, plan_id) VALUES (?, ?, ?, ?, ?)")
-    .run("MaisQueCardapio Demo", "demo", "admin@demo.com", "admin123", 2);
+  db.prepare("INSERT INTO establishments (name, slug, owner_whatsapp, password, plan_id) VALUES (?, ?, ?, ?, ?)")
+    .run("MaisQueCardapio Demo", "demo", "5511999999999", "admin123", 2);
 
   const est = db.prepare("SELECT id FROM establishments WHERE slug = ?").get("demo") as { id: number };
   const estId = est.id;
@@ -179,12 +191,47 @@ const getEstablishment = (req: express.Request, res: express.Response, next: exp
   next();
 };
 
+// Customer Auth Routes
+app.post("/api/public/customer/register", (req, res) => {
+  const { establishment_id, name, phone, password } = req.body;
+  try {
+    const info = db.prepare("INSERT INTO customers (establishment_id, name, phone, password) VALUES (?, ?, ?, ?)")
+      .run(establishment_id, name, phone, password);
+    res.json({ id: info.lastInsertRowid, name, phone });
+  } catch (e) {
+    res.status(400).json({ error: "Telefone já cadastrado nesta loja" });
+  }
+});
+
+app.post("/api/public/customer/login", (req, res) => {
+  const { establishment_id, phone, password } = req.body;
+  const customer = db.prepare("SELECT * FROM customers WHERE establishment_id = ? AND phone = ? AND password = ?")
+    .get(establishment_id, phone, password);
+  if (customer) {
+    res.json(customer);
+  } else {
+    res.status(401).json({ error: "Credenciais inválidas" });
+  }
+});
+
+app.put("/api/public/customer/profile", (req, res) => {
+  const { id, name, address } = req.body;
+  db.prepare("UPDATE customers SET name = ?, address = ? WHERE id = ?").run(name, address, id);
+  res.json({ success: true });
+});
+
+app.get("/api/public/customer/:id/orders", (req, res) => {
+  const orders = db.prepare("SELECT * FROM orders WHERE customer_phone = (SELECT phone FROM customers WHERE id = ?) ORDER BY created_at DESC")
+    .all(req.params.id);
+  res.json(orders);
+});
+
 // Public Routes (Registration, etc)
 app.post("/api/public/register", (req, res) => {
-  const { name, slug, owner_email, password } = req.body;
+  const { name, slug, owner_whatsapp, password } = req.body;
   try {
-    const info = db.prepare("INSERT INTO establishments (name, slug, owner_email, password, plan_id) VALUES (?, ?, ?, ?, ?)")
-      .run(name, slug, owner_email, password, 1);
+    const info = db.prepare("INSERT INTO establishments (name, slug, owner_whatsapp, password, plan_id) VALUES (?, ?, ?, ?, ?)")
+      .run(name, slug, owner_whatsapp, password, 1);
     const estId = info.lastInsertRowid;
     
     // Default settings
@@ -211,13 +258,44 @@ app.get("/api/superadmin/establishments", (req, res) => {
     SELECT e.*, p.name as plan_name 
     FROM establishments e 
     JOIN plans p ON e.plan_id = p.id
+    ORDER BY e.created_at DESC
   `).all();
   res.json(ests);
+});
+
+app.put("/api/superadmin/establishments/:id", (req, res) => {
+  const { plan_id, status } = req.body;
+  db.prepare("UPDATE establishments SET plan_id = ?, status = ? WHERE id = ?").run(plan_id, status, req.params.id);
+  res.json({ success: true });
+});
+
+app.delete("/api/superadmin/establishments/:id", (req, res) => {
+  db.prepare("DELETE FROM establishments WHERE id = ?").run(req.params.id);
+  res.json({ success: true });
 });
 
 app.get("/api/superadmin/plans", (req, res) => {
   const plans = db.prepare("SELECT * FROM plans").all();
   res.json(plans);
+});
+
+app.post("/api/superadmin/plans", (req, res) => {
+  const { name, price, max_products, enable_ai, enable_reservations, enable_automation } = req.body;
+  const info = db.prepare("INSERT INTO plans (name, price, max_products, enable_ai, enable_reservations, enable_automation) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(name, price, max_products, enable_ai, enable_reservations, enable_automation);
+  res.json({ id: info.lastInsertRowid });
+});
+
+app.put("/api/superadmin/plans/:id", (req, res) => {
+  const { name, price, max_products, enable_ai, enable_reservations, enable_automation } = req.body;
+  db.prepare("UPDATE plans SET name = ?, price = ?, max_products = ?, enable_ai = ?, enable_reservations = ?, enable_automation = ? WHERE id = ?")
+    .run(name, price, max_products, enable_ai, enable_reservations, enable_automation, req.params.id);
+  res.json({ success: true });
+});
+
+app.delete("/api/superadmin/plans/:id", (req, res) => {
+  db.prepare("DELETE FROM plans WHERE id = ?").run(req.params.id);
+  res.json({ success: true });
 });
 
 // Establishment Scoped Routes
@@ -237,6 +315,19 @@ app.get("/api/e/products", (req, res) => {
 app.post("/api/e/products", (req, res) => {
   const estId = (req as any).establishment.id;
   const { category_id, name, description, price, image_url } = req.body;
+  
+  // Check plan limit
+  const est = db.prepare(`
+    SELECT p.max_products, (SELECT COUNT(*) FROM products WHERE establishment_id = ?) as current_count
+    FROM establishments e
+    JOIN plans p ON e.plan_id = p.id
+    WHERE e.id = ?
+  `).get(estId, estId) as { max_products: number, current_count: number };
+
+  if (est.current_count >= est.max_products) {
+    return res.status(403).json({ error: `Limite do plano atingido (${est.max_products} produtos). Faça upgrade para adicionar mais.` });
+  }
+
   const info = db.prepare("INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)")
     .run(estId, category_id, name, description, price, image_url);
   res.json({ id: info.lastInsertRowid });
