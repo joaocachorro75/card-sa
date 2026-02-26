@@ -18,16 +18,6 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
-// Health check endpoint
-app.get("/health", async (req, res) => {
-  try {
-    await pool.execute("SELECT 1");
-    res.json({ status: "ok", database: "connected" });
-  } catch (error) {
-    res.status(500).json({ status: "error", database: "disconnected" });
-  }
-});
-
 // Initialize Database Tables
 async function initDatabase() {
   try {
@@ -192,6 +182,16 @@ initDatabase();
 
 const app = express();
 app.use(express.json());
+
+// Health check endpoint
+app.get("/health", async (req, res) => {
+  try {
+    await pool.execute("SELECT 1");
+    res.json({ status: "ok", database: "connected" });
+  } catch (error) {
+    res.status(500).json({ status: "error", database: "disconnected" });
+  }
+});
 
 // Middleware
 const getEstablishment = async (req: any, res: any, next: any) => {
