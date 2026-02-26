@@ -14,7 +14,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Instala dependências de produção + tsx para rodar TypeScript
+# Instala dependências de produção + tsx + wget para healthcheck
+RUN apk add --no-cache wget
 COPY package*.json ./
 RUN npm ci --omit=dev && npm install tsx typescript
 
@@ -30,7 +31,7 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
 CMD ["npx", "tsx", "server.ts"]

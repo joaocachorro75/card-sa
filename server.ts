@@ -18,9 +18,20 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
+// Health check endpoint
+app.get("/health", async (req, res) => {
+  try {
+    await pool.execute("SELECT 1");
+    res.json({ status: "ok", database: "connected" });
+  } catch (error) {
+    res.status(500).json({ status: "error", database: "disconnected" });
+  }
+});
+
 // Initialize Database Tables
 async function initDatabase() {
-  const connection = await pool.getConnection();
+  try {
+    const connection = await pool.getConnection();
   
   await connection.execute(`CREATE TABLE IF NOT EXISTS plans (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -171,9 +182,13 @@ async function initDatabase() {
 
   connection.release();
   console.log("Database initialized");
+  } catch (error) {
+    console.error("Database initialization error:", error);
+    process.exit(1);
+  }
 }
 
-initDatabase().catch(console.error);
+initDatabase();
 
 const app = express();
 app.use(express.json());
