@@ -2543,6 +2543,7 @@ const SuperAdmin = () => {
   const [establishments, setEstablishments] = useState<any[]>([]);
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [isEstModalOpen, setIsEstModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<any>(null);
@@ -2550,6 +2551,9 @@ const SuperAdmin = () => {
   const [isSuperLoggedIn, setIsSuperLoggedIn] = useState(false);
   const [superUsername, setSuperUsername] = useState('');
   const [superPassword, setSuperPassword] = useState('');
+  const [authToken, setAuthToken] = useState<string>('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
   const [planForm, setPlanForm] = useState({
     name: '',
     price: '',
@@ -2563,29 +2567,67 @@ const SuperAdmin = () => {
     status: ''
   });
 
-  const fetchData = () => {
-    Promise.all([
-      window.fetch('/api/superadmin/establishments').then(res => res.json()),
-      window.fetch('/api/superadmin/plans').then(res => res.json())
-    ]).then(([ests, plans]) => {
+  const fetchData = async (token: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [estsRes, plansRes] = await Promise.all([
+        window.fetch('/api/superadmin/establishments', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        window.fetch('/api/superadmin/plans', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
+      
+      if (!estsRes.ok || !plansRes.ok) {
+        throw new Error('Falha ao carregar dados. Verifique suas permissões.');
+      }
+      
+      const ests = await estsRes.json();
+      const plansData = await plansRes.json();
+      
       setEstablishments(ests);
-      setPlans(plans);
+      setPlans(plansData);
+    } catch (err: any) {
+      console.error('Erro ao buscar dados:', err);
+      setError(err.message || 'Erro ao carregar dados');
+    } finally {
       setLoading(false);
-    });
+    }
   };
 
   useEffect(() => {
-    if (isSuperLoggedIn) {
-      fetchData();
+    if (isSuperLoggedIn && authToken) {
+      fetchData(authToken);
     }
-  }, [isSuperLoggedIn]);
+  }, [isSuperLoggedIn, authToken]);
 
-  const handleSuperLogin = (e: React.FormEvent) => {
+  const handleSuperLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (superUsername === 'superadmin' && superPassword === 'admin123') {
-      setIsSuperLoggedIn(true);
-    } else {
-      alert('Credenciais inválidas');
+    setLoginLoading(true);
+    setLoginError('');
+    
+    try {
+      const res = await window.fetch('/api/superadmin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: superUsername, password: superPassword })
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok && data.token) {
+        setAuthToken(data.token);
+        setIsSuperLoggedIn(true);
+      } else {
+        setLoginError(data.error || 'Credenciais inválidas');
+      }
+    } catch (err) {
+      console.error('Erro no login:', err);
+      setLoginError('Erro de conexão. Tente novamente.');
+    } finally {
+      setLoginLoading(false);
     }
   };
 
@@ -2596,7 +2638,10 @@ const SuperAdmin = () => {
     
     await window.fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
       body: JSON.stringify({
         ...planForm,
         price: parseFloat(planForm.price),
@@ -2617,33 +2662,42 @@ const SuperAdmin = () => {
       enable_reservations: false,
       enable_automation: false
     });
-    fetchData();
+    fetchData(authToken);
   };
 
   const deletePlan = async (id: number) => {
     if (!confirm('Deletar plano?')) return;
-    await window.fetch(`/api/superadmin/plans/${id}`, { method: 'DELETE' });
-    fetchData();
+    await window.fetch(`/api/superadmin/plans/${id}`, { 
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    fetchData(authToken);
   };
 
   const handleEstSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await window.fetch(`/api/superadmin/establishments/${editingEst.id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
       body: JSON.stringify({
         plan_id: parseInt(estForm.plan_id),
         status: estForm.status
       })
     });
     setIsEstModalOpen(false);
-    fetchData();
+    fetchData(authToken);
   };
 
   const deleteEst = async (id: number) => {
     if (!confirm('Deletar estabelecimento permanentemente?')) return;
-    await window.fetch(`/api/superadmin/establishments/${id}`, { method: 'DELETE' });
-    fetchData();
+    await window.fetch(`/api/superadmin/establishments/${id}`, { 
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    fetchData(authToken);
   };
 
   if (!isSuperLoggedIn) {
