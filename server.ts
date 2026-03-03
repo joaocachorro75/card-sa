@@ -330,6 +330,90 @@ app.get("/api/superadmin/plans", async (req, res) => {
   }
 });
 
+// ============================================
+// SUPERADMIN - GERENCIAR PLANOS
+// ============================================
+
+app.post("/api/superadmin/plans", async (req, res) => {
+  try {
+    const { name, price, max_products, enable_ai, enable_reservations, enable_automation } = req.body;
+    const [result] = await pool.execute(
+      "INSERT INTO plans (name, price, max_products, enable_ai, enable_reservations, enable_automation) VALUES (?, ?, ?, ?, ?, ?)",
+      [name, price, max_products || 0, enable_ai || false, enable_reservations || false, enable_automation || false]
+    );
+    res.json({ id: (result as any).insertId, success: true });
+  } catch (error) {
+    console.error("Erro ao criar plano:", error);
+    res.status(500).json({ error: "Erro ao criar plano" });
+  }
+});
+
+app.put("/api/superadmin/plans/:id", async (req, res) => {
+  try {
+    const { name, price, max_products, enable_ai, enable_reservations, enable_automation } = req.body;
+    await pool.execute(
+      "UPDATE plans SET name = ?, price = ?, max_products = ?, enable_ai = ?, enable_reservations = ?, enable_automation = ? WHERE id = ?",
+      [name, price, max_products, enable_ai, enable_reservations, enable_automation, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro ao atualizar plano:", error);
+    res.status(500).json({ error: "Erro ao atualizar plano" });
+  }
+});
+
+app.delete("/api/superadmin/plans/:id", async (req, res) => {
+  try {
+    // Verificar se há estabelecimentos usando este plano
+    const [ests] = await pool.execute("SELECT COUNT(*) as count FROM establishments WHERE plan_id = ?", [req.params.id]);
+    if ((ests as any)[0].count > 0) {
+      return res.status(400).json({ error: "Não é possível excluir plano em uso por estabelecimentos" });
+    }
+    await pool.execute("DELETE FROM plans WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro ao excluir plano:", error);
+    res.status(500).json({ error: "Erro ao excluir plano" });
+  }
+});
+
+// ============================================
+// SUPERADMIN - GERENCIAR ESTABELECIMENTOS
+// ============================================
+
+app.put("/api/superadmin/establishments/:id", async (req, res) => {
+  try {
+    const { plan_id, status } = req.body;
+    await pool.execute(
+      "UPDATE establishments SET plan_id = ?, status = ? WHERE id = ?",
+      [plan_id, status, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro ao atualizar estabelecimento:", error);
+    res.status(500).json({ error: "Erro ao atualizar estabelecimento" });
+  }
+});
+
+app.delete("/api/superadmin/establishments/:id", async (req, res) => {
+  try {
+    // Deletar dados relacionados primeiro
+    const estId = req.params.id;
+    await pool.execute("DELETE FROM products WHERE establishment_id = ?", [estId]);
+    await pool.execute("DELETE FROM categories WHERE establishment_id = ?", [estId]);
+    await pool.execute("DELETE FROM neighborhoods WHERE establishment_id = ?", [estId]);
+    await pool.execute("DELETE FROM tables WHERE establishment_id = ?", [estId]);
+    await pool.execute("DELETE FROM orders WHERE establishment_id = ?", [estId]);
+    await pool.execute("DELETE FROM reservations WHERE establishment_id = ?", [estId]);
+    await pool.execute("DELETE FROM settings WHERE establishment_id = ?", [estId]);
+    await pool.execute("DELETE FROM establishments WHERE id = ?", [estId]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro ao excluir estabelecimento:", error);
+    res.status(500).json({ error: "Erro ao excluir estabelecimento" });
+  }
+});
+
 app.use("/api/e", getEstablishment);
 
 app.get("/api/e/categories", async (req: any, res) => {
