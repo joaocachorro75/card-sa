@@ -243,9 +243,6 @@ const superAdminAuthMiddleware = (req: any, res: any, next: any) => {
 app.post("/api/superadmin/login", async (req, res) => {
   const { username, password } = req.body;
   
-  console.log(`[SuperAdmin Login] Tentativa: username="${username}", password="${password}"`);
-  console.log(`[SuperAdmin Login] Esperado: username="${SUPERADMIN_USER}", password="${SUPERADMIN_PASSWORD}"`);
-  
   if (!username || !password) {
     return res.status(400).json({ error: "Username e password são obrigatórios." });
   }
@@ -256,10 +253,8 @@ app.post("/api/superadmin/login", async (req, res) => {
       JWT_SECRET,
       { expiresIn: "24h" }
     );
-    console.log("[SuperAdmin Login] ✅ Sucesso!");
     res.json({ token, message: "Login realizado com sucesso." });
   } else {
-    console.log("[SuperAdmin Login] ❌ Credenciais não conferem");
     res.status(401).json({ error: "Credenciais inválidas." });
   }
 });
