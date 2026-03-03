@@ -2734,8 +2734,17 @@ const SuperAdmin = () => {
                 className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-brand-accent text-white transition-all" 
               />
             </div>
-            <button className="w-full bg-brand-accent text-brand-bg py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20">
-              Acessar Painel
+            {loginError && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded-2xl text-sm font-bold">
+                {loginError}
+              </div>
+            )}
+            <button 
+              type="submit"
+              disabled={loginLoading}
+              className="w-full bg-brand-accent text-brand-bg py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loginLoading ? 'Entrando...' : 'Acessar Painel'}
             </button>
           </form>
         </motion.div>
