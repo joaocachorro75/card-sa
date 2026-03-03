@@ -2897,7 +2897,7 @@ const SuperAdmin = () => {
                   </div>
                 </div>
                 <div className="mb-8">
-                  <span className="text-4xl font-black">R$ {plan.price.toFixed(2)}</span>
+                  <span className="text-4xl font-black">R$ {(parseFloat(plan.price) || 0).toFixed(2)}</span>
                   <span className="text-zinc-500 text-sm font-bold ml-1">/mês</span>
                 </div>
                 <ul className="space-y-4 flex-1">

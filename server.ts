@@ -328,7 +328,12 @@ app.get("/api/superadmin/establishments", async (req, res) => {
 app.get("/api/superadmin/plans", async (req, res) => {
   try {
     const [rows] = await pool.execute("SELECT * FROM plans");
-    res.json(rows);
+    // Converter price para número
+    const plans = (rows as any[]).map(p => ({
+      ...p,
+      price: parseFloat(p.price) || 0
+    }));
+    res.json(plans);
   } catch (error) {
     console.error("Erro ao buscar planos:", error);
     res.status(500).json({ error: "Erro ao buscar planos" });
