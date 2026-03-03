@@ -310,13 +310,24 @@ app.get("/api/public/establishments/:slug", async (req, res) => {
 });
 
 app.get("/api/superadmin/establishments", async (req, res) => {
-  const [rows] = await pool.execute("SELECT e.*, p.name as plan_name FROM establishments e JOIN plans p ON e.plan_id = p.id ORDER BY e.created_at DESC");
-  res.json(rows);
+  try {
+    // LEFT JOIN para funcionar mesmo sem plano
+    const [rows] = await pool.execute("SELECT e.*, p.name as plan_name FROM establishments e LEFT JOIN plans p ON e.plan_id = p.id ORDER BY e.created_at DESC");
+    res.json(rows);
+  } catch (error) {
+    console.error("Erro ao buscar estabelecimentos:", error);
+    res.status(500).json({ error: "Erro ao buscar estabelecimentos" });
+  }
 });
 
 app.get("/api/superadmin/plans", async (req, res) => {
-  const [rows] = await pool.execute("SELECT * FROM plans");
-  res.json(rows);
+  try {
+    const [rows] = await pool.execute("SELECT * FROM plans");
+    res.json(rows);
+  } catch (error) {
+    console.error("Erro ao buscar planos:", error);
+    res.status(500).json({ error: "Erro ao buscar planos" });
+  }
 });
 
 app.use("/api/e", getEstablishment);

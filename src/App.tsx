@@ -2745,6 +2745,18 @@ const SuperAdmin = () => {
 
   if (loading) return <div className="min-h-screen bg-brand-bg flex items-center justify-center text-white font-black uppercase tracking-widest">Carregando painel mestre...</div>;
 
+  if (error) return (
+    <div className="min-h-screen bg-brand-bg flex flex-col items-center justify-center p-4">
+      <div className="text-red-500 font-black uppercase tracking-widest mb-4">Erro: {error}</div>
+      <button 
+        onClick={() => fetchData(authToken)}
+        className="bg-brand-accent text-brand-bg px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs"
+      >
+        Tentar Novamente
+      </button>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-brand-bg text-white">
       <nav className="bg-brand-bg/80 backdrop-blur-md border-b border-zinc-900 p-4 sticky top-0 z-50">
