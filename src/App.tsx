@@ -2601,10 +2601,6 @@ const SuperAdmin = () => {
     plan_id: '',
     status: 'active'
   });
-  const [estForm, setEstForm] = useState({
-    plan_id: '',
-    status: ''
-  });
 
   const fetchData = async (token: string) => {
     setLoading(true);
