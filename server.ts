@@ -111,15 +111,74 @@ async function initDatabase() {
     establishment_id INT NOT NULL,
     customer_name VARCHAR(255),
     customer_phone VARCHAR(50),
+    customer_email VARCHAR(255),
     address TEXT,
+    address_number VARCHAR(20),
+    address_complement VARCHAR(255),
+    address_reference VARCHAR(255),
     neighborhood_id INT,
     total DECIMAL(10,2),
+    delivery_fee DECIMAL(10,2) DEFAULT 0,
     payment_method VARCHAR(50),
+    payment_status VARCHAR(50) DEFAULT 'pending',
+    pix_code TEXT,
+    pix_qrcode TEXT,
+    pix_expires_at DATETIME,
     status VARCHAR(50) DEFAULT 'pending',
+    notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     type VARCHAR(50),
     items_text TEXT,
     FOREIGN KEY (establishment_id) REFERENCES establishments(id)
+  )`);
+
+  // Tabela de pagamentos PIX
+  await connection.execute(`CREATE TABLE IF NOT EXISTS payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id INT NOT NULL,
+    establishment_id INT NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    pix_code TEXT,
+    pix_qrcode TEXT,
+    status VARCHAR(50) DEFAULT 'pending',
+    paid_at DATETIME NULL,
+    confirmed_by INT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (establishment_id) REFERENCES establishments(id)
+  )`);
+
+  // Tabela de histórico de status do pedido
+  await connection.execute(`CREATE TABLE IF NOT EXISTS order_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id INT NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    notes TEXT,
+    created_by VARCHAR(50) DEFAULT 'system',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+  )`);
+
+  // Tabela de clientes estendida
+  await connection.execute(`CREATE TABLE IF NOT EXISTS customers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    establishment_id INT NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(50) NOT NULL,
+    email VARCHAR(255),
+    password VARCHAR(255) NOT NULL,
+    address TEXT,
+    address_number VARCHAR(20),
+    address_complement VARCHAR(255),
+    address_reference VARCHAR(255),
+    neighborhood_id INT,
+    total_orders INT DEFAULT 0,
+    total_spent DECIMAL(10,2) DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_order_at DATETIME NULL,
+    FOREIGN KEY (establishment_id) REFERENCES establishments(id),
+    UNIQUE KEY unique_phone (establishment_id, phone)
   )`);
 
   await connection.execute(`CREATE TABLE IF NOT EXISTS tables (
@@ -139,18 +198,6 @@ async function initDatabase() {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (establishment_id) REFERENCES establishments(id),
     FOREIGN KEY (table_id) REFERENCES tables(id)
-  )`);
-
-  await connection.execute(`CREATE TABLE IF NOT EXISTS customers (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    establishment_id INT NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    phone VARCHAR(50) NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    address TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (establishment_id) REFERENCES establishments(id),
-    UNIQUE KEY unique_phone (establishment_id, phone)
   )`);
 
   await connection.execute(`CREATE TABLE IF NOT EXISTS settings (
@@ -494,15 +541,689 @@ app.get("/api/e/tables", async (req: any, res) => {
 });
 
 app.get("/api/e/orders", async (req: any, res) => {
-  const [rows] = await pool.execute("SELECT * FROM orders WHERE establishment_id = ? ORDER BY created_at DESC LIMIT 50", [req.establishment.id]);
+  const [rows] = await pool.execute(`
+    SELECT o.*, n.name as neighborhood_name, n.delivery_fee as neighborhood_fee
+    FROM orders o 
+    LEFT JOIN neighborhoods n ON o.neighborhood_id = n.id
+    WHERE o.establishment_id = ? 
+    ORDER BY o.created_at DESC 
+    LIMIT 100
+  `, [req.establishment.id]);
   res.json(rows);
 });
 
-app.post("/api/e/orders", async (req: any, res) => {
-  const { customer_name, customer_phone, address, neighborhood_id, total, payment_method, type, items_text } = req.body;
-  const [result] = await pool.execute("INSERT INTO orders (establishment_id, customer_name, customer_phone, address, neighborhood_id, total, payment_method, type, items_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [req.establishment.id, customer_name, customer_phone, address, neighborhood_id, total, payment_method, type, items_text]);
-  res.json({ id: (result as any).insertId });
+// Buscar pedido específico
+app.get("/api/e/orders/:id", async (req: any, res) => {
+  const [rows] = await pool.execute(`
+    SELECT o.*, n.name as neighborhood_name, n.delivery_fee as neighborhood_fee
+    FROM orders o 
+    LEFT JOIN neighborhoods n ON o.neighborhood_id = n.id
+    WHERE o.id = ? AND o.establishment_id = ?
+  `, [req.params.id, req.establishment.id]);
+  
+  if (!(rows as any)[0]) {
+    return res.status(404).json({ error: "Pedido não encontrado" });
+  }
+  
+  // Buscar histórico do pedido
+  const [history] = await pool.execute(`
+    SELECT * FROM order_history WHERE order_id = ? ORDER BY created_at DESC
+  `, [req.params.id]);
+  
+  res.json({ ...(rows as any)[0], history });
 });
+
+// Criar pedido com dados completos
+app.post("/api/e/orders", async (req: any, res) => {
+  const { 
+    customer_name, 
+    customer_phone, 
+    customer_email,
+    address, 
+    address_number,
+    address_complement,
+    address_reference,
+    neighborhood_id, 
+    total, 
+    delivery_fee,
+    payment_method, 
+    type, 
+    items_text,
+    notes
+  } = req.body;
+  
+  // Gerar PIX Code se for pagamento PIX
+  let pixCode = null;
+  let pixQrcode = null;
+  let pixExpiresAt = null;
+  let paymentStatus = 'pending';
+  
+  if (payment_method === 'pix') {
+    // Buscar chave PIX do estabelecimento
+    const [settingsRows] = await pool.execute(
+      "SELECT value FROM settings WHERE establishment_id = ? AND `key` = 'pix_key'",
+      [req.establishment.id]
+    );
+    const pixKey = (settingsRows as any)[0]?.value || '';
+    
+    if (pixKey) {
+      // Gerar BR Code (copia e cola)
+      const txid = `ORDER${Date.now()}`.substring(0, 25);
+      pixCode = generatePixCode(pixKey, total, `Pedido #${Date.now()}`, txid);
+      pixQrcode = pixCode; // QR Code será gerado no frontend
+      pixExpiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutos
+    }
+  } else if (payment_method === 'entrega') {
+    paymentStatus = 'pending_delivery';
+  }
+  
+  const [result] = await pool.execute(`
+    INSERT INTO orders (
+      establishment_id, customer_name, customer_phone, customer_email,
+      address, address_number, address_complement, address_reference,
+      neighborhood_id, total, delivery_fee, payment_method, payment_status,
+      pix_code, pix_qrcode, pix_expires_at, type, items_text, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    req.establishment.id, customer_name, customer_phone, customer_email,
+    address, address_number, address_complement, address_reference,
+    neighborhood_id, total, delivery_fee || 0, payment_method, paymentStatus,
+    pixCode, pixQrcode, pixExpiresAt, type, items_text, notes
+  ]);
+  
+  const orderId = (result as any).insertId;
+  
+  // Registrar no histórico
+  await pool.execute(`
+    INSERT INTO order_history (order_id, status, notes, created_by)
+    VALUES (?, 'pending', 'Pedido criado', 'customer')
+  `, [orderId]);
+  
+  // Atualizar estatísticas do cliente se existir
+  if (customer_phone) {
+    await pool.execute(`
+      INSERT INTO customers (establishment_id, name, phone, email, address, address_number, address_complement, address_reference, neighborhood_id, total_orders, total_spent, last_order_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())
+      ON DUPLICATE KEY UPDATE 
+        name = VALUES(name),
+        email = COALESCE(VALUES(email), email),
+        address = VALUES(address),
+        address_number = VALUES(address_number),
+        address_complement = VALUES(address_complement),
+        address_reference = VALUES(address_reference),
+        neighborhood_id = VALUES(neighborhood_id),
+        total_orders = total_orders + 1,
+        total_spent = total_spent + VALUES(total_spent),
+        last_order_at = NOW()
+    `, [req.establishment.id, customer_name, customer_phone, customer_email, address, address_number, address_complement, address_reference, neighborhood_id, total]);
+  }
+  
+  res.json({ 
+    id: orderId, 
+    pix_code: pixCode,
+    pix_qrcode: pixQrcode,
+    pix_expires_at: pixExpiresAt,
+    payment_status: paymentStatus
+  });
+});
+
+// Confirmar pagamento PIX (manual pelo admin)
+app.put("/api/e/orders/:id/confirm-payment", async (req: any, res) => {
+  const { notes } = req.body;
+  
+  // Atualizar status do pedido
+  await pool.execute(`
+    UPDATE orders 
+    SET payment_status = 'paid', status = 'confirmed', updated_at = NOW()
+    WHERE id = ? AND establishment_id = ?
+  `, [req.params.id, req.establishment.id]);
+  
+  // Registrar no histórico
+  await pool.execute(`
+    INSERT INTO order_history (order_id, status, notes, created_by)
+    VALUES (?, 'paid', ?, 'admin')
+  `, [req.params.id, notes || 'Pagamento PIX confirmado']);
+  
+  // Registrar pagamento
+  await pool.execute(`
+    INSERT INTO payments (order_id, establishment_id, amount, status, paid_at)
+    SELECT id, establishment_id, total, 'paid', NOW()
+    FROM orders WHERE id = ?
+  `, [req.params.id]);
+  
+  // Buscar dados do pedido para notificar cliente
+  const [orderRows] = await pool.execute(`
+    SELECT * FROM orders WHERE id = ? AND establishment_id = ?
+  `, [req.params.id, req.establishment.id]);
+  
+  const order = (orderRows as any)[0];
+  
+  if (order && order.customer_phone) {
+    const message = `✅ *Pagamento Confirmado!*
+
+📋 *Pedido #${order.id}*
+
+Seu pagamento foi confirmado com sucesso!
+Estamos preparando seu pedido.
+
+📊 Status: Confirmado
+💰 Total: R$ ${parseFloat(order.total).toFixed(2)}
+
+Acompanhe seu pedido em nosso cardápio.
+
+_Obrigado pela preferência!_`;
+    
+    await sendWhatsAppMessage(order.customer_phone, message);
+  }
+  
+  res.json({ success: true, message: "Pagamento confirmado!" });
+});
+
+// Atualizar status do pedido
+app.put("/api/e/orders/:id/status", async (req: any, res) => {
+  const { status, notes } = req.body;
+  
+  const validStatuses = ['pending', 'confirmed', 'preparing', 'delivering', 'completed', 'cancelled'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: "Status inválido" });
+  }
+  
+  await pool.execute(`
+    UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ? AND establishment_id = ?
+  `, [status, req.params.id, req.establishment.id]);
+  
+  // Registrar no histórico
+  await pool.execute(`
+    INSERT INTO order_history (order_id, status, notes, created_by)
+    VALUES (?, ?, ?, 'admin')
+  `, [req.params.id, status, notes || '']);
+  
+  // Notificar cliente sobre mudança de status
+  const [orderRows] = await pool.execute(`
+    SELECT * FROM orders WHERE id = ? AND establishment_id = ?
+  `, [req.params.id, req.establishment.id]);
+  
+  const order = (orderRows as any)[0];
+  
+  if (order && order.customer_phone) {
+    const statusMessages: Record<string, string> = {
+      'confirmed': '✅ Seu pedido foi confirmado!',
+      'preparing': '👨‍🍳 Seu pedido está sendo preparado!',
+      'delivering': '🛵 Seu pedido está a caminho!',
+      'completed': '🎉 Pedido entregue! Obrigado!',
+      'cancelled': '❌ Seu pedido foi cancelado.'
+    };
+    
+    const message = `${statusMessages[status] || `📊 Status atualizado: ${status}`}
+
+📋 *Pedido #${order.id}*
+💰 Total: R$ ${parseFloat(order.total).toFixed(2)}
+
+${notes || ''}`;
+    
+    await sendWhatsAppMessage(order.customer_phone, message);
+  }
+  
+  res.json({ success: true });
+});
+
+// Histórico de pedidos do cliente (público)
+app.get("/api/public/orders/:phone", async (req, res) => {
+  const { phone } = req.params;
+  const slug = req.headers['x-establishment-slug'];
+  
+  if (!slug) {
+    return res.status(400).json({ error: "Estabelecimento não informado" });
+  }
+  
+  // Buscar estabelecimento
+  const [estRows] = await pool.execute("SELECT id FROM establishments WHERE slug = ?", [slug]);
+  if (!(estRows as any)[0]) {
+    return res.status(404).json({ error: "Estabelecimento não encontrado" });
+  }
+  
+  const estId = (estRows as any)[0].id;
+  
+  // Buscar pedidos do cliente
+  const [rows] = await pool.execute(`
+    SELECT o.*, n.name as neighborhood_name
+    FROM orders o 
+    LEFT JOIN neighborhoods n ON o.neighborhood_id = n.id
+    WHERE o.establishment_id = ? AND o.customer_phone = ?
+    ORDER BY o.created_at DESC
+    LIMIT 20
+  `, [estId, phone]);
+  
+  res.json(rows);
+});
+
+// ============================================
+// SISTEMA COMPLETO DE PEDIDOS E PAGAMENTOS
+// ============================================
+
+// Endpoint público para buscar pedido por ID (para acompanhamento)
+app.get("/api/public/orders/id/:id", async (req, res) => {
+  const { id } = req.params;
+  const slug = req.headers['x-establishment-slug'];
+  
+  try {
+    // Buscar estabelecimento
+    const [estRows] = await pool.execute("SELECT id, name FROM establishments WHERE slug = ?", [slug]);
+    if (!(estRows as any)[0]) {
+      return res.status(404).json({ error: "Estabelecimento não encontrado" });
+    }
+    
+    const estId = (estRows as any)[0].id;
+    const estName = (estRows as any)[0].name;
+    
+    // Buscar pedido
+    const [orderRows] = await pool.execute(`
+      SELECT o.*, n.name as neighborhood_name
+      FROM orders o 
+      LEFT JOIN neighborhoods n ON o.neighborhood_id = n.id
+      WHERE o.id = ? AND o.establishment_id = ?
+    `, [id, estId]);
+    
+    if (!(orderRows as any)[0]) {
+      return res.status(404).json({ error: "Pedido não encontrado" });
+    }
+    
+    const order = (orderRows as any)[0];
+    
+    // Buscar histórico de status
+    const [historyRows] = await pool.execute(`
+      SELECT * FROM order_history WHERE order_id = ? ORDER BY created_at DESC
+    `, [id]);
+    
+    res.json({ 
+      ...order, 
+      history: historyRows,
+      establishment_name: estName 
+    });
+  } catch (error) {
+    console.error("Erro ao buscar pedido:", error);
+    res.status(500).json({ error: "Erro ao buscar pedido" });
+  }
+});
+
+// Cliente confirma que pagou PIX
+app.post("/api/public/orders/:id/confirm-payment", async (req, res) => {
+  const { id } = req.params;
+  const slug = req.headers['x-establishment-slug'];
+  
+  try {
+    // Buscar estabelecimento
+    const [estRows] = await pool.execute("SELECT id FROM establishments WHERE slug = ?", [slug]);
+    if (!(estRows as any)[0]) {
+      return res.status(404).json({ error: "Estabelecimento não encontrado" });
+    }
+    
+    const estId = (estRows as any)[0].id;
+    
+    // Verificar se pedido existe e está aguardando pagamento
+    const [orderRows] = await pool.execute(`
+      SELECT * FROM orders WHERE id = ? AND establishment_id = ?
+    `, [id, estId]);
+    
+    if (!(orderRows as any)[0]) {
+      return res.status(404).json({ error: "Pedido não encontrado" });
+    }
+    
+    const order = (orderRows as any)[0];
+    
+    if (order.payment_status !== 'pending' && order.payment_status !== 'aguardando_pagamento') {
+      return res.status(400).json({ error: "Este pedido não está aguardando pagamento" });
+    }
+    
+    // Atualizar status
+    await pool.execute(`
+      UPDATE orders 
+      SET payment_status = 'pagamento_em_analise', updated_at = NOW()
+      WHERE id = ?
+    `, [id]);
+    
+    // Registrar no histórico
+    await pool.execute(`
+      INSERT INTO order_history (order_id, status, notes, created_by)
+      VALUES (?, 'pagamento_em_analise', 'Cliente confirmou pagamento PIX', 'customer')
+    `, [id]);
+    
+    // Notificar admin via WhatsApp
+    const [settingsRows] = await pool.execute(
+      "SELECT value FROM settings WHERE establishment_id = ? AND `key` = 'whatsapp_cashier'",
+      [estId]
+    );
+    const adminPhone = (settingsRows as any)[0]?.value || '';
+    
+    if (adminPhone) {
+      const message = `💰 *Pagamento PIX Confirmado pelo Cliente!*
+
+📋 *Pedido #${order.id}*
+
+👤 *Cliente:* ${order.customer_name || 'N/A'}
+📱 *Telefone:* ${order.customer_phone || 'N/A'}
+💰 *Total:* R$ ${parseFloat(order.total).toFixed(2)}
+
+⚠️ *Ação necessária:* Verifique o pagamento e confirme no painel admin.
+
+_Acesse o painel para confirmar ou rejeitar o pagamento._`;
+      
+      await sendWhatsAppMessage(adminPhone, message);
+    }
+    
+    res.json({ success: true, message: "Pagamento confirmado! Aguarde a verificação." });
+  } catch (error) {
+    console.error("Erro ao confirmar pagamento:", error);
+    res.status(500).json({ error: "Erro ao confirmar pagamento" });
+  }
+});
+
+// Endpoint para cliente buscar seus pedidos
+app.get("/api/public/customer/:phone/orders", async (req, res) => {
+  const { phone } = req.params;
+  const slug = req.headers['x-establishment-slug'];
+  
+  try {
+    // Buscar estabelecimento
+    const [estRows] = await pool.execute("SELECT id FROM establishments WHERE slug = ?", [slug]);
+    if (!(estRows as any)[0]) {
+      return res.status(404).json({ error: "Estabelecimento não encontrado" });
+    }
+    
+    const estId = (estRows as any)[0].id;
+    
+    // Buscar pedidos do cliente
+    const [rows] = await pool.execute(`
+      SELECT o.*, n.name as neighborhood_name,
+        (SELECT COUNT(*) FROM order_history oh WHERE oh.order_id = o.id) as history_count
+      FROM orders o 
+      LEFT JOIN neighborhoods n ON o.neighborhood_id = n.id
+      WHERE o.establishment_id = ? AND o.customer_phone = ?
+      ORDER BY o.created_at DESC
+      LIMIT 20
+    `, [estId, phone]);
+    
+    res.json(rows);
+  } catch (error) {
+    console.error("Erro ao buscar pedidos do cliente:", error);
+    res.status(500).json({ error: "Erro ao buscar pedidos" });
+  }
+});
+
+// Admin: Atualizar status do pedido com notificação WhatsApp
+app.put("/api/e/orders/:id/status", async (req: any, res) => {
+  const { id } = req.params;
+  const { status, payment_status, notes } = req.body;
+  
+  try {
+    // Status válidos para o pedido
+    const validOrderStatuses = [
+      'pendente', 'confirmado', 'em_preparo', 'saiu_para_entrega', 
+      'entregue', 'cancelado', 'aguardando_pagamento'
+    ];
+    
+    // Status válidos para pagamento
+    const validPaymentStatuses = [
+      'pendente', 'aguardando_pagamento', 'pagamento_em_analise', 
+      'pago', 'pagamento_rejeitado', 'pending_delivery'
+    ];
+    
+    // Buscar pedido atual
+    const [orderRows] = await pool.execute(`
+      SELECT o.*, e.slug, n.name as neighborhood_name
+      FROM orders o 
+      JOIN establishments e ON o.establishment_id = e.id
+      LEFT JOIN neighborhoods n ON o.neighborhood_id = n.id
+      WHERE o.id = ? AND o.establishment_id = ?
+    `, [id, req.establishment.id]);
+    
+    if (!(orderRows as any)[0]) {
+      return res.status(404).json({ error: "Pedido não encontrado" });
+    }
+    
+    const order = (orderRows as any)[0];
+    
+    // Atualizar status do pedido se fornecido
+    if (status && validOrderStatuses.includes(status)) {
+      await pool.execute(`
+        UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?
+      `, [status, id]);
+      
+      await pool.execute(`
+        INSERT INTO order_history (order_id, status, notes, created_by)
+        VALUES (?, ?, ?, 'admin')
+      `, [id, status, notes || '']);
+    }
+    
+    // Atualizar status de pagamento se fornecido
+    if (payment_status && validPaymentStatuses.includes(payment_status)) {
+      await pool.execute(`
+        UPDATE orders SET payment_status = ?, updated_at = NOW() WHERE id = ?
+      `, [payment_status, id]);
+      
+      // Se pago, registrar no histórico também
+      if (payment_status === 'pago') {
+        await pool.execute(`
+          INSERT INTO order_history (order_id, status, notes, created_by)
+          VALUES (?, 'pago', ?, 'admin')
+        `, [id, notes || 'Pagamento confirmado']);
+        
+        // Registrar pagamento na tabela payments
+        await pool.execute(`
+          INSERT INTO payments (order_id, establishment_id, amount, status, paid_at)
+          VALUES (?, ?, ?, 'paid', NOW())
+          ON DUPLICATE KEY UPDATE status = 'paid', paid_at = NOW()
+        `, [id, req.establishment.id, order.total]);
+      }
+    }
+    
+    // Enviar notificação WhatsApp para o cliente
+    if (order.customer_phone) {
+      const baseUrl = process.env.BASE_URL || 'https://automacao-maisquecardapio.nfeujb.easypanel.host';
+      const statusLabels: Record<string, string> = {
+        'pendente': 'Pendente',
+        'confirmado': 'Confirmado',
+        'em_preparo': 'Em Preparo',
+        'saiu_para_entrega': 'Saiu para Entrega',
+        'entregue': 'Entregue',
+        'cancelado': 'Cancelado',
+        'aguardando_pagamento': 'Aguardando Pagamento',
+        'pago': 'Pagamento Confirmado'
+      };
+      
+      const paymentLabels: Record<string, string> = {
+        'pendente': 'Pendente',
+        'aguardando_pagamento': 'Aguardando PIX',
+        'pagamento_em_analise': 'Pagamento em Análise',
+        'pago': 'Pago',
+        'pagamento_rejeitado': 'Pagamento Rejeitado',
+        'pending_delivery': 'Pagamento na Entrega'
+      };
+      
+      const statusText = status ? statusLabels[status] || status : '';
+      const paymentText = payment_status ? paymentLabels[payment_status] || payment_status : '';
+      const dateStr = new Date().toLocaleDateString('pt-BR');
+      const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      
+      let message = `🍽️ *${req.establishment.name || 'Mais Que Cardápio'}*\n\n`;
+      message += `Seu pedido *#${id}* foi atualizado!\n\n`;
+      
+      if (statusText) {
+        message += `📦 *Status:* ${statusText}\n`;
+      }
+      if (paymentText) {
+        message += `💳 *Pagamento:* ${paymentText}\n`;
+      }
+      message += `⏰ ${dateStr} às ${timeStr}\n\n`;
+      message += `🔗 Acompanhe: ${baseUrl}/e/${order.slug}/pedido/${id}`;
+      
+      if (notes && status === 'cancelado') {
+        message += `\n\n📝 *Motivo:* ${notes}`;
+      }
+      
+      await sendWhatsAppMessage(order.customer_phone, message);
+    }
+    
+    res.json({ success: true, message: "Status atualizado!" });
+  } catch (error) {
+    console.error("Erro ao atualizar status:", error);
+    res.status(500).json({ error: "Erro ao atualizar status" });
+  }
+});
+
+// Admin: Buscar métricas do dashboard
+app.get("/api/e/dashboard/metrics", async (req: any, res) => {
+  try {
+    const estId = req.establishment.id;
+    const today = new Date().toISOString().split('T')[0];
+    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    
+    // Total vendido (pedidos pagos)
+    const [totalSold] = await pool.execute(`
+      SELECT COALESCE(SUM(total), 0) as total 
+      FROM orders 
+      WHERE establishment_id = ? AND payment_status IN ('pago', 'paid')
+    `, [estId]);
+    
+    // Pedidos do dia
+    const [todayOrders] = await pool.execute(`
+      SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total
+      FROM orders 
+      WHERE establishment_id = ? AND DATE(created_at) = ?
+    `, [estId, today]);
+    
+    // Ticket médio
+    const [avgTicket] = await pool.execute(`
+      SELECT COALESCE(AVG(total), 0) as avg 
+      FROM orders 
+      WHERE establishment_id = ? AND payment_status IN ('pago', 'paid')
+    `, [estId]);
+    
+    // Pedidos por status
+    const [statusCounts] = await pool.execute(`
+      SELECT status, COUNT(*) as count 
+      FROM orders 
+      WHERE establishment_id = ? 
+      GROUP BY status
+    `, [estId]);
+    
+    // Pedidos do mês
+    const [monthOrders] = await pool.execute(`
+      SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total
+      FROM orders 
+      WHERE establishment_id = ? AND DATE(created_at) >= ?
+    `, [estId, startOfMonth]);
+    
+    res.json({
+      totalSold: parseFloat((totalSold as any)[0]?.total || 0),
+      todayOrders: (todayOrders as any)[0]?.count || 0,
+      todayTotal: parseFloat((todayOrders as any)[0]?.total || 0),
+      avgTicket: parseFloat((avgTicket as any)[0]?.avg || 0),
+      statusCounts: statusCounts,
+      monthOrders: (monthOrders as any)[0]?.count || 0,
+      monthTotal: parseFloat((monthOrders as any)[0]?.total || 0)
+    });
+  } catch (error) {
+    console.error("Erro ao buscar métricas:", error);
+    res.status(500).json({ error: "Erro ao buscar métricas" });
+  }
+});
+
+// Admin: Buscar pedidos com filtros
+app.get("/api/e/orders", async (req: any, res) => {
+  try {
+    const { status, payment_status, date_from, date_to, search, limit = 100 } = req.query;
+    
+    let query = `
+      SELECT o.*, n.name as neighborhood_name
+      FROM orders o 
+      LEFT JOIN neighborhoods n ON o.neighborhood_id = n.id
+      WHERE o.establishment_id = ?
+    `;
+    const params: any[] = [req.establishment.id];
+    
+    if (status) {
+      query += ` AND o.status = ?`;
+      params.push(status);
+    }
+    
+    if (payment_status) {
+      query += ` AND o.payment_status = ?`;
+      params.push(payment_status);
+    }
+    
+    if (date_from) {
+      query += ` AND DATE(o.created_at) >= ?`;
+      params.push(date_from);
+    }
+    
+    if (date_to) {
+      query += ` AND DATE(o.created_at) <= ?`;
+      params.push(date_to);
+    }
+    
+    if (search) {
+      query += ` AND (o.customer_name LIKE ? OR o.customer_phone LIKE ? OR o.id = ?)`;
+      params.push(`%${search}%`, `%${search}%`, parseInt(search) || 0);
+    }
+    
+    query += ` ORDER BY o.created_at DESC LIMIT ?`;
+    params.push(parseInt(limit));
+    
+    const [rows] = await pool.execute(query, params);
+    res.json(rows);
+  } catch (error) {
+    console.error("Erro ao buscar pedidos:", error);
+    res.status(500).json({ error: "Erro ao buscar pedidos" });
+  }
+});
+
+// Função para gerar código PIX (BR Code)
+function generatePixCode(pixKey: string, amount: number, merchantName: string, txid: string): string {
+  // Formato simplificado do BR Code
+  const formatField = (id: string, value: string) => {
+    const len = value.length.toString().padStart(2, '0');
+    return `${id}${len}${value}`;
+  };
+  
+  // Dados do PIX
+  const payloadFormat = formatField('00', '01');
+  const merchantAccount = formatField('26', 
+    formatField('00', 'BR.GOV.BCB.PIX') +
+    formatField('01', pixKey)
+  );
+  const merchantCategory = formatField('52', '0000');
+  const currency = formatField('53', '986');
+  const amountField = formatField('54', amount.toFixed(2));
+  const countryCode = formatField('58', 'BR');
+  const merchantNameField = formatField('59', merchantName.substring(0, 25));
+  const merchantCity = formatField('60', 'BRASILIA');
+  const txidField = formatField('62', formatField('05', txid));
+  
+  // Montar payload sem CRC
+  const payload = payloadFormat + merchantAccount + merchantCategory + currency + amountField + countryCode + merchantNameField + merchantCity + txidField + '6304';
+  
+  // CRC16-CCITT (simplificado - em produção usar biblioteca específica)
+  const crc = calculateCRC16(payload);
+  
+  return payload + crc;
+}
+
+// CRC16-CCITT simplificado
+function calculateCRC16(str: string): string {
+  let crc = 0xFFFF;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      if (crc & 0x8000) {
+        crc = (crc << 1) ^ 0x1021;
+      } else {
+        crc <<= 1;
+      }
+    }
+  }
+  return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+}
 
 app.get("/api/e/settings", async (req: any, res) => {
   const [rows] = await pool.execute("SELECT * FROM settings WHERE establishment_id = ?", [req.establishment.id]);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useParams, useSearchParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
@@ -32,9 +32,22 @@ import {
   User,
   Check,
   ShieldCheck,
-  Edit2
+  Edit2,
+  Copy,
+  CheckCircle,
+  XCircle,
+  Clock3,
+  Truck,
+  Home as HomeIcon,
+  RefreshCw,
+  Filter,
+  Search,
+  DollarSign,
+  TrendingUp,
+  Eye,
+  MessageCircle
 } from 'lucide-react';
-import { cn, Product, Category, Neighborhood, CartItem } from './types';
+import { cn, Product, Category, Neighborhood, CartItem, Order, OrderStatus, PaymentStatus, CustomerData, DashboardMetrics } from './types';
 import { GoogleGenAI } from "@google/genai";
 
 // --- AI Insights Component ---
