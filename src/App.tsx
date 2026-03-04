@@ -2208,9 +2208,26 @@ const LandingPage = () => {
     }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    window.location.href = `/e/${loginData.slug}/admin`;
+    setLoading(true);
+    try {
+      const res = await window.fetch('/api/public/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ whatsapp: loginData.slug, password: loginData.password })
+      });
+      const data = await res.json();
+      if (res.ok && data.slug) {
+        window.location.href = `/e/${data.slug}/admin`;
+      } else {
+        alert(data.error || 'Credenciais inválidas');
+      }
+    } catch (e) {
+      alert('Erro ao fazer login');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -2514,21 +2531,30 @@ const LandingPage = () => {
               <h2 className="text-3xl font-black mb-8 uppercase tracking-tighter">Login <span className="text-brand-accent">Lojista</span></h2>
               <form onSubmit={handleLogin} className="space-y-6">
                 <div>
-                  <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Slug da sua loja</label>
-                  <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden focus-within:ring-2 focus-within:ring-brand-accent transition-all">
-                    <span className="pl-4 text-zinc-500 text-sm font-bold">/e/</span>
-                    <input 
-                      required
-                      value={loginData.slug}
-                      onChange={e => setLoginData({...loginData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')})}
-                      className="w-full bg-transparent p-4 outline-none text-sm text-white" 
-                      placeholder="sua-loja"
-                    />
-                  </div>
+                  <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">WhatsApp (com DDD)</label>
+                  <input 
+                    required
+                    type="text"
+                    value={loginData.slug}
+                    onChange={e => setLoginData({...loginData, slug: e.target.value.replace(/\D/g, '')})}
+                    className="w-full bg-zinc-950 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-brand-accent text-sm text-white" 
+                    placeholder="5511999999999"
+                  />
                 </div>
-                <p className="text-xs text-zinc-500 leading-relaxed">Você será redirecionado para a página de login administrativa da sua loja.</p>
+                <div>
+                  <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Senha</label>
+                  <input 
+                    required
+                    type="password"
+                    value={loginData.password || ''}
+                    onChange={e => setLoginData({...loginData, password: e.target.value})}
+                    className="w-full bg-zinc-950 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-brand-accent text-sm text-white" 
+                    placeholder="Sua senha"
+                  />
+                </div>
+                <p className="text-xs text-zinc-500 leading-relaxed">Você será redirecionado para o painel administrativo da sua loja.</p>
                 <button type="submit" className="w-full bg-brand-accent text-brand-bg py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20">
-                  Ir para o Painel
+                  Entrar
                 </button>
               </form>
             </motion.div>
@@ -2546,6 +2572,7 @@ const SuperAdmin = () => {
   const [error, setError] = useState<string | null>(null);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [isEstModalOpen, setIsEstModalOpen] = useState(false);
+  const [isNewEstModalOpen, setIsNewEstModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<any>(null);
   const [editingEst, setEditingEst] = useState<any>(null);
   const [isSuperLoggedIn, setIsSuperLoggedIn] = useState(false);
@@ -2561,6 +2588,19 @@ const SuperAdmin = () => {
     enable_ai: false,
     enable_reservations: false,
     enable_automation: false
+  });
+  const [estForm, setEstForm] = useState({
+    plan_id: '',
+    status: ''
+  });
+  const [newEstForm, setNewEstForm] = useState({
+    name: '',
+    slug: '',
+    owner_whatsapp: '',
+    password: '',
+    plan_id: '',
+    status: 'active'
+  });
   });
   const [estForm, setEstForm] = useState({
     plan_id: '',
@@ -2691,6 +2731,25 @@ const SuperAdmin = () => {
     fetchData(authToken);
   };
 
+  const handleNewEstSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await window.fetch('/api/superadmin/establishments', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify(newEstForm)
+    });
+    if (res.ok) {
+      setIsNewEstModalOpen(false);
+      fetchData(authToken);
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Erro ao criar estabelecimento');
+    }
+  };
+
   const deleteEst = async (id: number) => {
     if (!confirm('Deletar estabelecimento permanentemente?')) return;
     await window.fetch(`/api/superadmin/establishments/${id}`, { 
@@ -2800,6 +2859,16 @@ const SuperAdmin = () => {
         <section>
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-3xl font-black uppercase tracking-tighter">Estabelecimentos</h2>
+            <button 
+              onClick={() => {
+                setEditingEst(null);
+                setNewEstForm({ name: '', slug: '', owner_whatsapp: '', password: '', plan_id: '', status: 'active' });
+                setIsNewEstModalOpen(true);
+              }}
+              className="bg-brand-accent text-brand-bg px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-brand-accent/20"
+            >
+              <Plus className="w-4 h-4" /> Novo Estabelecimento
+            </button>
           </div>
           <div className="bg-brand-surface rounded-[32px] border border-zinc-800 overflow-hidden">
             <table className="w-full text-left">
@@ -2975,6 +3044,51 @@ const SuperAdmin = () => {
                 <div className="flex gap-4 pt-4">
                   <button type="button" onClick={() => setIsEstModalOpen(false)} className="flex-1 bg-zinc-800 text-white py-5 rounded-2xl font-black uppercase tracking-widest">Cancelar</button>
                   <button type="submit" className="flex-1 bg-brand-accent text-brand-bg py-5 rounded-2xl font-black uppercase tracking-widest">Salvar</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+        {isNewEstModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsNewEstModalOpen(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-brand-surface border border-zinc-800 p-10 rounded-[40px] shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+              <h2 className="text-3xl font-black mb-8 uppercase tracking-tighter">Nova Loja</h2>
+              <form onSubmit={handleNewEstSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Nome da Loja</label>
+                  <input required value={newEstForm.name} onChange={e => setNewEstForm({...newEstForm, name: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-brand-accent" placeholder="Restaurante Exemplo" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Slug (URL)</label>
+                  <input required value={newEstForm.slug} onChange={e => setNewEstForm({...newEstForm, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')})} className="w-full bg-zinc-950 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-brand-accent" placeholder="restaurante-exemplo" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">WhatsApp (com DDD)</label>
+                  <input required value={newEstForm.owner_whatsapp} onChange={e => setNewEstForm({...newEstForm, owner_whatsapp: e.target.value.replace(/\D/g, '')})} className="w-full bg-zinc-950 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-brand-accent" placeholder="5511999999999" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Senha</label>
+                  <input required type="password" value={newEstForm.password} onChange={e => setNewEstForm({...newEstForm, password: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-brand-accent" placeholder="Senha de acesso" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Plano</label>
+                  <select required value={newEstForm.plan_id} onChange={e => setNewEstForm({...newEstForm, plan_id: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-brand-accent">
+                    <option value="">Selecione...</option>
+                    {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Status</label>
+                  <select value={newEstForm.status} onChange={e => setNewEstForm({...newEstForm, status: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-brand-accent">
+                    <option value="active">Ativo</option>
+                    <option value="suspended">Suspenso</option>
+                    <option value="pending">Pendente</option>
+                  </select>
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button type="button" onClick={() => setIsNewEstModalOpen(false)} className="flex-1 bg-zinc-800 text-white py-5 rounded-2xl font-black uppercase tracking-widest">Cancelar</button>
+                  <button type="submit" className="flex-1 bg-brand-accent text-brand-bg py-5 rounded-2xl font-black uppercase tracking-widest">Criar</button>
                 </div>
               </form>
             </motion.div>

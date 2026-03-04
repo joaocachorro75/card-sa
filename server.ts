@@ -303,6 +303,25 @@ app.post("/api/public/register", async (req, res) => {
   } catch (e) { res.status(400).json({ error: "Slug em uso" }); }
 });
 
+// Login com WhatsApp + senha
+app.post("/api/public/login", async (req, res) => {
+  const { whatsapp, password } = req.body;
+  try {
+    const [rows] = await pool.execute("SELECT slug, password FROM establishments WHERE owner_whatsapp = ?", [whatsapp]);
+    const est = (rows as any)[0];
+    if (!est) {
+      return res.status(401).json({ error: "WhatsApp não cadastrado" });
+    }
+    if (est.password !== password) {
+      return res.status(401).json({ error: "Senha incorreta" });
+    }
+    res.json({ slug: est.slug, message: "Login realizado com sucesso" });
+  } catch (e) {
+    console.error("Erro no login:", e);
+    res.status(500).json({ error: "Erro ao fazer login" });
+  }
+});
+
 app.get("/api/public/establishments/:slug", async (req, res) => {
   const [rows] = await pool.execute("SELECT id, name, slug, status FROM establishments WHERE slug = ?", [req.params.slug]);
   if (!(rows as any)[0]) return res.status(404).json({ error: "Não encontrado" });
@@ -416,6 +435,33 @@ app.delete("/api/superadmin/establishments/:id", async (req, res) => {
   } catch (error) {
     console.error("Erro ao excluir estabelecimento:", error);
     res.status(500).json({ error: "Erro ao excluir estabelecimento" });
+  }
+});
+
+// Criar novo estabelecimento/usuário pelo SuperAdmin
+app.post("/api/superadmin/establishments", async (req, res) => {
+  try {
+    const { name, slug, owner_whatsapp, password, plan_id, status } = req.body;
+    
+    // Validar campos obrigatórios
+    if (!name || !slug || !owner_whatsapp || !password) {
+      return res.status(400).json({ error: "Nome, slug, WhatsApp e senha são obrigatórios" });
+    }
+    
+    // Verificar se slug já existe
+    const [existing] = await pool.execute("SELECT id FROM establishments WHERE slug = ?", [slug]);
+    if ((existing as any).length > 0) {
+      return res.status(400).json({ error: "Slug já está em uso" });
+    }
+    
+    const [result] = await pool.execute(
+      "INSERT INTO establishments (name, slug, owner_whatsapp, password, plan_id, status) VALUES (?, ?, ?, ?, ?, ?)",
+      [name, slug, owner_whatsapp, password, plan_id || 1, status || 'active']
+    );
+    res.json({ id: (result as any).insertId, success: true });
+  } catch (error) {
+    console.error("Erro ao criar estabelecimento:", error);
+    res.status(500).json({ error: "Erro ao criar estabelecimento" });
   }
 });
 
