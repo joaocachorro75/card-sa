@@ -488,8 +488,8 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
     }));
   };
 
-  const subtotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-  const deliveryFee = neighborhoods.find(n => n.id === selectedNeighborhood)?.delivery_fee || 0;
+  const subtotal = cart.reduce((acc, item) => acc + (parseFloat(String(item.price)) || 0) * item.quantity, 0);
+  const deliveryFee = parseFloat(String(neighborhoods.find(n => n.id === selectedNeighborhood)?.delivery_fee || 0));
   const total = subtotal + deliveryFee;
 
   const filteredProducts = products.filter(p => {
@@ -501,7 +501,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
 
   const handleCheckout = async () => {
     const neighborhoodName = neighborhoods.find(n => n.id === selectedNeighborhood)?.name;
-    const items_text = cart.map(item => `${item.quantity}x ${item.name} - R$ ${(item.price * item.quantity).toFixed(2)}`).join('\n');
+    const items_text = cart.map(item => `${item.quantity}x ${item.name} - R$ ${((parseFloat(String(item.price)) || 0) * item.quantity).toFixed(2)}`).join('\n');
     
     const message = `*Novo Pedido ${tableNumber ? `(Mesa ${tableNumber})` : '(Delivery)'}*\n\n` +
       `*Cliente:* ${customer ? customer.name : 'Cliente Web'}\n` +
