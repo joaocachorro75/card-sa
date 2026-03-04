@@ -325,7 +325,7 @@ const CustomerProfile = ({ customer, onClose }: { customer: any, onClose: () => 
                     </div>
                     <p className="text-xs text-zinc-500 mb-2">{new Date(order.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
                     <div className="text-sm text-zinc-800 whitespace-pre-wrap line-clamp-2 mb-2">{order.items_text}</div>
-                    <p className="font-bold text-orange-600">R$ {order.total.toFixed(2)}</p>
+                    <p className="font-bold text-orange-600">R$ {(parseFloat(order.total) || 0).toFixed(2)}</p>
                   </div>
                 ))}
               </div>
@@ -709,7 +709,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                   <p className="text-zinc-500 text-xs leading-relaxed line-clamp-2 font-medium">{product.description}</p>
                 </div>
                 <div className="flex items-center justify-between mt-4">
-                  <span className="text-orange-500 font-black text-lg tracking-tighter">R$ {product.price.toFixed(2)}</span>
+                  <span className="text-orange-500 font-black text-lg tracking-tighter">R$ {(parseFloat(product.price) || 0).toFixed(2)}</span>
                   <div className={cn(
                     "p-2 rounded-xl transition-all",
                     product.is_available && settings.is_open === "1"
@@ -836,7 +836,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                       <img src={item.image_url || 'https://picsum.photos/seed/food/100/100'} className="w-20 h-20 object-cover rounded-xl" />
                       <div className="flex-1">
                         <h4 className="font-bold uppercase tracking-tight">{item.name}</h4>
-                        <p className="text-orange-500 font-black text-sm mb-2">R$ {item.price.toFixed(2)}</p>
+                        <p className="text-orange-500 font-black text-sm mb-2">R$ {(parseFloat(item.price) || 0).toFixed(2)}</p>
                         <div className="flex items-center gap-3">
                           <button onClick={() => updateQuantity(item.id, -1)} className="p-1 hover:bg-zinc-200 rounded-lg"><Minus className="w-4 h-4" /></button>
                           <span className="font-bold">{item.quantity}</span>
@@ -868,7 +868,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                         >
                           <option value="">Selecione o bairro</option>
                           {neighborhoods.map(n => (
-                            <option key={n.id} value={n.id}>{n.name} - R$ {n.delivery_fee.toFixed(2)}</option>
+                            <option key={n.id} value={n.id}>{n.name} - R$ {(parseFloat(n.delivery_fee) || 0).toFixed(2)}</option>
                           ))}
                         </select>
                       </div>
@@ -1359,7 +1359,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                         {categories.find(c => c.id === product.category_id)?.name}
                       </td>
                       <td className="px-6 py-4 font-bold text-zinc-900">
-                        R$ {product.price.toFixed(2)}
+                        R$ {(parseFloat(product.price) || 0).toFixed(2)}
                       </td>
                       <td className="px-6 py-4">
                         <button
@@ -1469,7 +1469,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                     <p className="text-zinc-500 text-sm">Taxa de entrega</p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="font-bold text-zinc-900">R$ {n.delivery_fee.toFixed(2)}</span>
+                    <span className="font-bold text-zinc-900">R$ {(parseFloat(n.delivery_fee) || 0).toFixed(2)}</span>
                     <button 
                       onClick={async () => {
                         if (confirm('Deletar bairro?')) {
@@ -1561,7 +1561,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                           {order.payment_method}
                         </td>
                         <td className="px-6 py-4 font-bold text-zinc-900">
-                          R$ {order.total.toFixed(2)}
+                          R$ {(parseFloat(order.total) || 0).toFixed(2)}
                         </td>
                         <td className="px-6 py-4 flex items-center gap-3">
                           <span className="bg-zinc-100 text-zinc-600 px-2 py-1 rounded-lg text-[10px] font-bold uppercase">
