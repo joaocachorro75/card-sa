@@ -1040,6 +1040,302 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
           </>
         )}
       </AnimatePresence>
+
+      {/* Checkout Modal */}
+      <AnimatePresence>
+        {isCheckoutModalOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCheckoutModalOpen(false)}
+              className="fixed inset-0 bg-black/60 z-[80] backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+            >
+              <div className={cn(
+                "w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl",
+                settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                  ? "bg-zinc-900 text-white" 
+                  : "bg-white text-zinc-900"
+              )}>
+                <div className="p-6 border-b border-zinc-800 flex justify-between items-center sticky top-0 bg-inherit z-10">
+                  <h2 className="text-xl font-black uppercase tracking-tighter flex items-center gap-2">
+                    <ShoppingCart className="w-5 h-5" /> Finalizar Pedido
+                  </h2>
+                  <button onClick={() => setIsCheckoutModalOpen(false)} className="p-2 hover:bg-zinc-100/10 rounded-full">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!selectedNeighborhood) {
+                    alert('Selecione o bairro para entrega');
+                    return;
+                  }
+                  if (!checkoutData.customer_name || !checkoutData.customer_phone) {
+                    alert('Preencha nome e telefone');
+                    return;
+                  }
+                  
+                  setCheckoutLoading(true);
+                  
+                  const items_text = cart.map(item => 
+                    `${item.quantity}x ${item.name} - R$ ${((parseFloat(String(item.price)) || 0) * item.quantity).toFixed(2)}`
+                  ).join('\n');
+                  
+                  try {
+                    const res = await apiFetch('/orders', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        customer_name: checkoutData.customer_name,
+                        customer_phone: checkoutData.customer_phone.replace(/\D/g, ''),
+                        customer_email: checkoutData.customer_email,
+                        address: checkoutData.address,
+                        address_number: checkoutData.address_number,
+                        address_complement: checkoutData.address_complement,
+                        address_reference: checkoutData.address_reference,
+                        neighborhood_id: selectedNeighborhood,
+                        total,
+                        delivery_fee: deliveryFee,
+                        payment_method: paymentMethod,
+                        items_text: items_text,
+                        type: 'delivery'
+                      })
+                    });
+                    
+                    const order = await res.json();
+                    
+                    setCart([]);
+                    setIsCheckoutModalOpen(false);
+                    navigate(`/e/${slug}/pedido/${order.id}`);
+                  } catch (error) {
+                    console.error('Erro ao criar pedido:', error);
+                    alert('Erro ao finalizar pedido. Tente novamente.');
+                  } finally {
+                    setCheckoutLoading(false);
+                  }
+                }} className="p-6 space-y-6">
+                  {/* Dados Pessoais */}
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest flex items-center gap-2">
+                      <User className="w-4 h-4" /> Seus Dados
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Nome completo *</label>
+                        <input
+                          required
+                          value={checkoutData.customer_name}
+                          onChange={e => setCheckoutData({...checkoutData, customer_name: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="Seu nome"
+                        />
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">WhatsApp *</label>
+                        <input
+                          required
+                          type="tel"
+                          value={checkoutData.customer_phone}
+                          onChange={e => setCheckoutData({...checkoutData, customer_phone: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="(00) 00000-0000"
+                        />
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">E-mail</label>
+                        <input
+                          type="email"
+                          value={checkoutData.customer_email}
+                          onChange={e => setCheckoutData({...checkoutData, customer_email: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="email@exemplo.com"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Endereço de Entrega */}
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest flex items-center gap-2">
+                      <MapPin className="w-4 h-4" /> Endereço de Entrega
+                    </h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="col-span-3 sm:col-span-2">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Rua/Avenida</label>
+                        <input
+                          value={checkoutData.address}
+                          onChange={e => setCheckoutData({...checkoutData, address: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="Nome da rua"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Número</label>
+                        <input
+                          value={checkoutData.address_number}
+                          onChange={e => setCheckoutData({...checkoutData, address_number: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="123"
+                        />
+                      </div>
+                      <div className="col-span-3 sm:col-span-1">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Complemento</label>
+                        <input
+                          value={checkoutData.address_complement}
+                          onChange={e => setCheckoutData({...checkoutData, address_complement: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="Apto, Bloco..."
+                        />
+                      </div>
+                      <div className="col-span-3 sm:col-span-2">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Ponto de Referência</label>
+                        <input
+                          value={checkoutData.address_reference}
+                          onChange={e => setCheckoutData({...checkoutData, address_reference: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="Próximo ao..."
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Bairro *</label>
+                        <select
+                          required
+                          value={selectedNeighborhood || ''}
+                          onChange={e => setSelectedNeighborhood(parseInt(e.target.value))}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                        >
+                          <option value="">Selecione o bairro</option>
+                          {neighborhoods.map(n => (
+                            <option key={n.id} value={n.id}>{n.name} - R$ {(parseFloat(n.delivery_fee) || 0).toFixed(2)}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Pagamento */}
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest flex items-center gap-2">
+                      <CreditCard className="w-4 h-4" /> Forma de Pagamento
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('pix')}
+                        className={cn(
+                          "p-4 rounded-xl border font-bold text-sm uppercase tracking-widest transition-all flex flex-col items-center gap-2",
+                          paymentMethod === 'pix' 
+                            ? "bg-orange-500 text-white border-orange-500" 
+                            : settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600" 
+                              : "bg-zinc-50 border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                        )}
+                      >
+                        <QrCode className="w-6 h-6" />
+                        PIX
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('entrega')}
+                        className={cn(
+                          "p-4 rounded-xl border font-bold text-sm uppercase tracking-widest transition-all flex flex-col items-center gap-2",
+                          paymentMethod === 'entrega' 
+                            ? "bg-orange-500 text-white border-orange-500" 
+                            : settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600" 
+                              : "bg-zinc-50 border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                        )}
+                      >
+                        <CreditCard className="w-6 h-6" />
+                        Na Entrega
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Resumo do Pedido */}
+                  <div className="space-y-3 p-4 rounded-2xl bg-zinc-800/50 border border-zinc-700">
+                    <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Resumo do Pedido</h3>
+                    <div className="text-xs text-zinc-400 whitespace-pre-wrap">
+                      {cart.map(item => `${item.quantity}x ${item.name}`).join('\n')}
+                    </div>
+                    <div className="space-y-2 pt-3 border-t border-zinc-700">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Subtotal</span>
+                        <span>R$ {subtotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Taxa de Entrega</span>
+                        <span>R$ {deliveryFee.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-xl font-black pt-2 border-t border-zinc-600">
+                        <span>Total</span>
+                        <span className="text-orange-500">R$ {total.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Botão Confirmar */}
+                  <button
+                    type="submit"
+                    disabled={checkoutLoading || !selectedNeighborhood}
+                    className="w-full bg-orange-500 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {checkoutLoading ? 'Processando...' : 'Confirmar Pedido'}
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
