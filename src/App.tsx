@@ -350,6 +350,469 @@ const CustomerProfile = ({ customer, onClose }: { customer: any, onClose: () => 
   );
 };
 
+// --- Status Colors Helper ---
+const statusColors: Record<string, string> = {
+  'pendente': 'bg-yellow-500',
+  'aguardando_pagamento': 'bg-yellow-500',
+  'confirmado': 'bg-blue-500',
+  'em_preparo': 'bg-orange-500',
+  'saiu_para_entrega': 'bg-purple-500',
+  'entregue': 'bg-green-500',
+  'cancelado': 'bg-red-500',
+  // English versions for compatibility
+  'pending': 'bg-yellow-500',
+  'confirmed': 'bg-blue-500',
+  'preparing': 'bg-orange-500',
+  'delivering': 'bg-purple-500',
+  'completed': 'bg-green-500',
+  'cancelled': 'bg-red-500'
+};
+
+const statusLabels: Record<string, string> = {
+  'pendente': 'Pendente',
+  'aguardando_pagamento': 'Aguardando Pagamento',
+  'confirmado': 'Confirmado',
+  'em_preparo': 'Em Preparo',
+  'saiu_para_entrega': 'Saiu para Entrega',
+  'entregue': 'Entregue',
+  'cancelado': 'Cancelado',
+  // English versions for compatibility
+  'pending': 'Pendente',
+  'confirmed': 'Confirmado',
+  'preparing': 'Em Preparo',
+  'delivering': 'Saiu para Entrega',
+  'completed': 'Entregue',
+  'cancelled': 'Cancelado'
+};
+
+// --- OrderTracking Component ---
+const OrderTracking = ({ slug }: { slug: string }) => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [order, setOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
+
+  const fetchOrder = async () => {
+    try {
+      const res = await window.fetch(`/api/public/orders/id/${id}`);
+      const data = await res.json();
+      setOrder(data);
+    } catch (error) {
+      console.error('Erro ao buscar pedido:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrder();
+    const interval = setInterval(fetchOrder, 30000); // Auto-refresh a cada 30 segundos
+    return () => clearInterval(interval);
+  }, [id]);
+
+  const handleCopyPix = () => {
+    if (order?.pix_code) {
+      navigator.clipboard.writeText(order.pix_code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!order) return;
+    setConfirmingPayment(true);
+    try {
+      const res = await window.fetch(`/api/public/orders/${order.id}/confirm-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        await fetchOrder();
+        alert('Pagamento confirmado! Aguarde a confirmação do estabelecimento.');
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Erro ao confirmar pagamento');
+      }
+    } catch (error) {
+      alert('Erro ao confirmar pagamento');
+    } finally {
+      setConfirmingPayment(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-zinc-500 font-bold">Carregando pedido...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!order) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="bg-zinc-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <XCircle className="w-8 h-8 text-zinc-400" />
+          </div>
+          <h2 className="text-xl font-bold text-zinc-900 mb-2">Pedido não encontrado</h2>
+          <p className="text-zinc-500 mb-6">Verifique se o link está correto</p>
+          <Link to={`/e/${slug}`} className="text-orange-500 font-bold hover:underline">
+            Voltar ao cardápio
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const isAwaitingPayment = (order.status === 'aguardando_pagamento' || order.status === 'pendente') && 
+                             order.payment_method === 'pix' && 
+                             order.pix_code;
+
+  return (
+    <div className="min-h-screen bg-zinc-50 pb-32">
+      {/* Header */}
+      <div className="bg-white border-b border-zinc-100 sticky top-0 z-50">
+        <div className="max-w-lg mx-auto px-4 py-4 flex items-center gap-4">
+          <Link to={`/e/${slug}`} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
+            <ChevronRight className="w-5 h-5 rotate-180" />
+          </Link>
+          <div>
+            <h1 className="text-lg font-black text-zinc-900">Pedido #{order.id}</h1>
+            <p className="text-xs text-zinc-500">
+              {new Date(order.created_at).toLocaleDateString('pt-BR', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
+        {/* Status Atual */}
+        <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm p-6">
+          <h2 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-4">Status Atual</h2>
+          <div className="flex items-center gap-4">
+            <div className={cn(
+              "w-4 h-4 rounded-full animate-pulse",
+              statusColors[order.status] || 'bg-zinc-400'
+            )} />
+            <span className="text-xl font-black text-zinc-900">
+              {statusLabels[order.status] || order.status}
+            </span>
+          </div>
+        </div>
+
+        {/* QR Code PIX */}
+        {isAwaitingPayment && (
+          <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm p-6 space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="bg-green-500 p-2 rounded-xl">
+                <QrCode className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="font-black text-zinc-900">Pague com PIX</h2>
+                <p className="text-xs text-zinc-500">Escaneie o QR Code ou copie o código</p>
+              </div>
+            </div>
+
+            <div className="flex justify-center bg-zinc-50 p-6 rounded-2xl border border-zinc-100">
+              <QRCodeSVG value={order.pix_code || ''} size={200} />
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-black text-zinc-400 uppercase tracking-widest">
+                Código PIX (Copia e Cola)
+              </label>
+              <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-100">
+                <p className="text-xs text-zinc-600 break-all font-mono line-clamp-3">
+                  {order.pix_code}
+                </p>
+              </div>
+              <button
+                onClick={handleCopyPix}
+                className={cn(
+                  "w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all",
+                  copied 
+                    ? "bg-green-500 text-white" 
+                    : "bg-zinc-900 text-white hover:bg-zinc-800"
+                )}
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-5 h-5" /> Copiado!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-5 h-5" /> Copiar Código
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="pt-4 border-t border-zinc-100">
+              <button
+                onClick={handleConfirmPayment}
+                disabled={confirmingPayment}
+                className="w-full bg-orange-500 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-orange-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {confirmingPayment ? (
+                  <>
+                    <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                    Confirmando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5" /> Já paguei
+                  </>
+                )}
+              </button>
+              <p className="text-xs text-zinc-400 text-center mt-3">
+                Clique após realizar o pagamento para notificar o estabelecimento
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Detalhes do Pedido */}
+        <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm p-6 space-y-4">
+          <h2 className="text-xs font-black text-zinc-400 uppercase tracking-widest">Detalhes do Pedido</h2>
+          
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Cliente</span>
+              <span className="font-bold text-zinc-900">{order.customer_name || 'N/A'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Telefone</span>
+              <span className="font-bold text-zinc-900">{order.customer_phone || 'N/A'}</span>
+            </div>
+            {order.address && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Endereço</span>
+                  <span className="font-bold text-zinc-900 text-right">
+                    {order.address}, {order.address_number}
+                    {order.address_complement && ` - ${order.address_complement}`}
+                  </span>
+                </div>
+                {order.address_reference && (
+                  <div className="flex justify-between">
+                    <span className="text-zinc-500">Referência</span>
+                    <span className="font-bold text-zinc-900">{order.address_reference}</span>
+                  </div>
+                )}
+              </>
+            )}
+            {order.neighborhood_name && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Bairro</span>
+                <span className="font-bold text-zinc-900">{order.neighborhood_name}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Pagamento</span>
+              <span className="font-bold text-zinc-900 uppercase">{order.payment_method}</span>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-zinc-100 space-y-2">
+            <p className="text-xs font-black text-zinc-400 uppercase tracking-widest">Itens</p>
+            <div className="text-sm text-zinc-700 whitespace-pre-wrap">{order.items_text}</div>
+          </div>
+
+          <div className="pt-4 border-t border-zinc-100 space-y-2">
+            {order.delivery_fee > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">Taxa de Entrega</span>
+                <span className="font-bold">R$ {order.delivery_fee.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-lg">
+              <span className="font-black text-zinc-900">Total</span>
+              <span className="font-black text-orange-500">R$ {(order.total || 0).toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Histórico de Status */}
+        {order.history && order.history.length > 0 && (
+          <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm p-6">
+            <h2 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-4">Histórico</h2>
+            <div className="space-y-4">
+              {order.history.map((item, index) => (
+                <div key={item.id || index} className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div className={cn(
+                      "w-3 h-3 rounded-full",
+                      statusColors[item.status] || 'bg-zinc-400'
+                    )} />
+                    {index < order.history!.length - 1 && (
+                      <div className="w-0.5 h-8 bg-zinc-200" />
+                    )}
+                  </div>
+                  <div className="pb-4">
+                    <p className="font-bold text-zinc-900">
+                      {statusLabels[item.status] || item.status}
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {new Date(item.created_at).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                      {item.notes && ` - ${item.notes}`}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- CustomerOrders Component ---
+const CustomerOrders = ({ slug }: { slug: string }) => {
+  const [phone, setPhone] = useState('');
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phone.trim()) return;
+    
+    setLoading(true);
+    setSearched(true);
+    try {
+      const res = await window.fetch(`/api/public/orders/${phone.replace(/\D/g, '')}`);
+      const data = await res.json();
+      setOrders(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Erro ao buscar pedidos:', error);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-zinc-50 pb-32">
+      {/* Header */}
+      <div className="bg-white border-b border-zinc-100 sticky top-0 z-50">
+        <div className="max-w-lg mx-auto px-4 py-4 flex items-center gap-4">
+          <Link to={`/e/${slug}`} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
+            <ChevronRight className="w-5 h-5 rotate-180" />
+          </Link>
+          <h1 className="text-lg font-black text-zinc-900">Meus Pedidos</h1>
+        </div>
+      </div>
+
+      <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
+        {/* Formulário de Busca */}
+        <form onSubmit={handleSearch} className="bg-white rounded-3xl border border-zinc-100 shadow-sm p-6 space-y-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="bg-orange-500 p-2 rounded-xl">
+              <Smartphone className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="font-black text-zinc-900">Consultar Pedidos</h2>
+              <p className="text-xs text-zinc-500">Digite seu telefone para ver seus pedidos</p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <input
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="(00) 00000-0000"
+              className="flex-1 bg-zinc-50 border border-zinc-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 font-bold"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="bg-orange-500 text-white px-6 rounded-xl font-bold hover:bg-orange-600 transition-all disabled:opacity-50"
+            >
+              {loading ? '...' : 'Buscar'}
+            </button>
+          </div>
+        </form>
+
+        {/* Lista de Pedidos */}
+        {searched && (
+          <div className="space-y-4">
+            <h2 className="text-xs font-black text-zinc-400 uppercase tracking-widest px-2">
+              {orders.length > 0 ? `${orders.length} pedido(s) encontrado(s)` : 'Nenhum pedido encontrado'}
+            </h2>
+
+            {orders.length === 0 ? (
+              <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm p-8 text-center">
+                <Package className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
+                <p className="text-zinc-500 font-bold">Nenhum pedido encontrado para este telefone</p>
+                <p className="text-xs text-zinc-400 mt-2">Verifique se o número está correto</p>
+              </div>
+            ) : (
+              orders.map(order => (
+                <Link
+                  key={order.id}
+                  to={`/e/${slug}/pedido/${order.id}`}
+                  className="block bg-white rounded-3xl border border-zinc-100 shadow-sm p-6 hover:border-orange-200 transition-colors"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <span className="text-xs font-bold text-zinc-400">Pedido #{order.id}</span>
+                      <p className="text-sm text-zinc-500 mt-1">
+                        {new Date(order.created_at).toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    </div>
+                    <div className={cn(
+                      "px-3 py-1 rounded-full text-[10px] font-black uppercase text-white",
+                      statusColors[order.status] || 'bg-zinc-400'
+                    )}>
+                      {statusLabels[order.status] || order.status}
+                    </div>
+                  </div>
+                  
+                  <div className="text-sm text-zinc-700 line-clamp-2 mb-3">
+                    {order.items_text}
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="font-black text-orange-500">R$ {(order.total || 0).toFixed(2)}</span>
+                    <span className="text-xs font-bold text-orange-500 flex items-center gap-1">
+                      Ver detalhes <ChevronRight className="w-4 h-4" />
+                    </span>
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const Navbar = ({ settings, slug, customer, onAuthClick, onLogout, onProfileClick }: { settings: any, slug?: string, customer?: any, onAuthClick?: () => void, onLogout?: () => void, onProfileClick?: () => void }) => (
   <nav className={cn(
     "sticky top-0 z-50 backdrop-blur-xl border-b px-4 py-3 flex justify-between items-center transition-all",
@@ -425,6 +888,7 @@ const FloatingCart = ({ count, total, onClick }: { count: number; total: number;
 // --- Pages ---
 
 const OnlineMenu = ({ slug }: { slug: string }) => {
+  const navigate = useNavigate();
   const [establishment, setEstablishment] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -443,6 +907,19 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
   const [customer, setCustomer] = useState<any>(null);
   const [searchParams] = useSearchParams();
   const tableNumber = searchParams.get('mesa');
+  
+  // Checkout form state
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutData, setCheckoutData] = useState({
+    customer_name: '',
+    customer_phone: '',
+    customer_email: '',
+    address: '',
+    address_number: '',
+    address_complement: '',
+    address_reference: ''
+  });
 
   const apiFetch = (url: string, options: any = {}) => {
     return fetch(`/api/e${url}`, {
@@ -513,32 +990,31 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
   });
 
   const handleCheckout = async () => {
-    const neighborhoodName = neighborhoods.find(n => n.id === selectedNeighborhood)?.name;
+    // For delivery orders, open checkout modal
+    if (!tableNumber) {
+      setIsCheckoutModalOpen(true);
+      return;
+    }
+    
+    // For table orders, create directly
     const items_text = cart.map(item => `${item.quantity}x ${item.name} - R$ ${((parseFloat(String(item.price)) || 0) * item.quantity).toFixed(2)}`).join('\n');
     
-    const message = `*Novo Pedido ${tableNumber ? `(Mesa ${tableNumber})` : '(Delivery)'}*\n\n` +
-      `*Cliente:* ${customer ? customer.name : 'Cliente Web'}\n` +
-      `*Telefone:* ${customer ? customer.phone : 'N/A'}\n\n` +
-      items_text +
-      `\n\n${!tableNumber ? `*Bairro:* ${neighborhoodName}\n*Taxa:* R$ ${deliveryFee.toFixed(2)}\n` : ''}` +
-      `*Pagamento:* ${paymentMethod === 'pix' ? 'PIX' : 'Na Entrega'}\n` +
-      `*Total: R$ ${total.toFixed(2)}*`;
-    
-    // Save order to DB
-    await apiFetch('/orders', {
-      method: 'POST',
-      body: JSON.stringify({
-        total,
-        payment_method: paymentMethod,
-        type: tableNumber ? 'table' : 'delivery',
-        neighborhood_id: selectedNeighborhood,
-        items_text: items_text,
-        customer_name: customer ? customer.name : (tableNumber ? `Mesa ${tableNumber}` : 'Cliente Web'),
-        customer_phone: customer ? customer.phone : null
-      })
-    });
-
-    if (tableNumber) {
+    try {
+      const res = await apiFetch('/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          total,
+          payment_method: paymentMethod,
+          type: 'table',
+          items_text: items_text,
+          customer_name: `Mesa ${tableNumber}`,
+          customer_phone: null
+        })
+      });
+      
+      const order = await res.json();
+      
+      // Create command for table
       const table = tables.find(t => t.number === parseInt(tableNumber));
       if (table) {
         await apiFetch('/commands', {
@@ -549,11 +1025,59 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
           })
         });
       }
+      
+      // Clear cart and redirect
+      setCart([]);
+      navigate(`/e/${slug}/pedido/${order.id}`);
+    } catch (error) {
+      console.error('Erro ao criar pedido:', error);
+      alert('Erro ao finalizar pedido. Tente novamente.');
     }
+  };
 
-    const targetWhatsApp = tableNumber ? settings.whatsapp_kitchen : settings.whatsapp_cashier;
-    const whatsappUrl = `https://wa.me/${targetWhatsApp || '5511999999999'}?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
+  const handleConfirmCheckout = async () => {
+    if (!selectedNeighborhood) {
+      alert('Selecione o bairro para entrega');
+      return;
+    }
+    
+    setCheckoutLoading(true);
+    
+    const items_text = cart.map(item => `${item.quantity}x ${item.name} - R$ ${((parseFloat(String(item.price)) || 0) * item.quantity).toFixed(2)}`).join('\n');
+    
+    try {
+      const res = await apiFetch('/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer_name: checkoutData.customer_name,
+          customer_phone: checkoutData.customer_phone,
+          customer_email: checkoutData.customer_email,
+          address: checkoutData.address,
+          address_number: checkoutData.address_number,
+          address_complement: checkoutData.address_complement,
+          address_reference: checkoutData.address_reference,
+          neighborhood_id: selectedNeighborhood,
+          total,
+          delivery_fee: deliveryFee,
+          payment_method: paymentMethod,
+          items_text: items_text,
+          type: 'delivery'
+        })
+      });
+      
+      const order = await res.json();
+      
+      // Clear cart and redirect to tracking page
+      setCart([]);
+      setIsCheckoutModalOpen(false);
+      setIsCartOpen(false);
+      navigate(`/e/${slug}/pedido/${order.id}`);
+    } catch (error) {
+      console.error('Erro ao criar pedido:', error);
+      alert('Erro ao finalizar pedido. Tente novamente.');
+    } finally {
+      setCheckoutLoading(false);
+    }
   };
 
   return (
@@ -3107,6 +3631,396 @@ const SuperAdmin = () => {
   );
 };
 
+// --- Order Tracking Component ---
+const OrderTracking = ({ slug }: { slug: string }) => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [order, setOrder] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  const apiFetch = (url: string, options: any = {}) => {
+    return fetch(`/api/public${url}`, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'x-establishment-slug': slug,
+        'Content-Type': 'application/json'
+      }
+    });
+  };
+
+  const fetchOrder = async () => {
+    try {
+      const res = await apiFetch(`/orders/id/${id}`);
+      const data = await res.json();
+      setOrder(data);
+    } catch (error) {
+      console.error('Erro ao buscar pedido:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrder();
+    const interval = setInterval(fetchOrder, 30000); // Atualiza a cada 30s
+    return () => clearInterval(interval);
+  }, [id]);
+
+  const handleCopyPix = () => {
+    if (order?.pix_code) {
+      navigator.clipboard.writeText(order.pix_code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!confirm('Você confirma que já realizou o pagamento PIX?')) return;
+    
+    setConfirming(true);
+    try {
+      const res = await apiFetch(`/orders/${id}/confirm-payment`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        fetchOrder();
+        alert('Pagamento confirmado! Aguarde a confirmação do estabelecimento.');
+      } else {
+        alert(data.error || 'Erro ao confirmar pagamento');
+      }
+    } catch (error) {
+      alert('Erro ao confirmar pagamento');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
+    'pending': { label: 'Pendente', color: 'bg-yellow-500', icon: Clock3 },
+    'confirmed': { label: 'Confirmado', color: 'bg-blue-500', icon: CheckCircle },
+    'preparing': { label: 'Em Preparo', color: 'bg-orange-500', icon: ChefHat },
+    'delivering': { label: 'Saiu para Entrega', color: 'bg-purple-500', icon: Truck },
+    'completed': { label: 'Entregue', color: 'bg-green-500', icon: CheckCircle },
+    'cancelled': { label: 'Cancelado', color: 'bg-red-500', icon: XCircle }
+  };
+
+  const paymentStatusConfig: Record<string, { label: string; color: string }> = {
+    'pending': { label: 'Aguardando', color: 'text-yellow-500' },
+    'aguardando_pagamento': { label: 'Aguardando PIX', color: 'text-yellow-500' },
+    'pagamento_em_analise': { label: 'Pagamento em Análise', color: 'text-blue-500' },
+    'pago': { label: 'Pago', color: 'text-green-500' },
+    'pagamento_rejeitado': { label: 'Pagamento Rejeitado', color: 'text-red-500' },
+    'pending_delivery': { label: 'Na Entrega', color: 'text-purple-500' }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="text-zinc-400">Carregando pedido...</div>
+      </div>
+    );
+  }
+
+  if (!order) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-4">
+        <XCircle className="w-16 h-16 text-red-500" />
+        <div className="text-zinc-400">Pedido não encontrado</div>
+        <button onClick={() => navigate(`/e/${slug}`)} className="text-orange-500 font-bold">Voltar ao cardápio</button>
+      </div>
+    );
+  }
+
+  const currentStatus = statusConfig[order.status] || statusConfig['pending'];
+  const currentPaymentStatus = paymentStatusConfig[order.payment_status] || paymentStatusConfig['pending'];
+  const showPixPayment = order.payment_method === 'pix' && (order.payment_status === 'pending' || order.payment_status === 'aguardando_pagamento');
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-white pb-8">
+      {/* Header */}
+      <div className="bg-zinc-900 border-b border-zinc-800 p-4 sticky top-0 z-10">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
+          <button onClick={() => navigate(`/e/${slug}`)} className="text-zinc-400 hover:text-white">
+            <ChevronRight className="w-6 h-6 rotate-180" />
+          </button>
+          <h1 className="font-black text-lg">Pedido #{order.id}</h1>
+          <button onClick={fetchOrder} className="text-zinc-400 hover:text-white">
+            <RefreshCw className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-lg mx-auto p-4 space-y-4">
+        {/* Status Principal */}
+        <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800">
+          <div className="flex items-center gap-4 mb-4">
+            <div className={`${currentStatus.color} p-4 rounded-2xl`}>
+              <currentStatus.icon className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 uppercase font-bold">Status</p>
+              <p className="text-xl font-black">{currentStatus.label}</p>
+            </div>
+          </div>
+
+          {/* Payment Status */}
+          <div className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+            <span className="text-sm text-zinc-400">Pagamento</span>
+            <span className={`font-bold ${currentPaymentStatus.color}`}>{currentPaymentStatus.label}</span>
+          </div>
+        </div>
+
+        {/* PIX Payment Section */}
+        {showPixPayment && (
+          <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+            <div className="flex items-center gap-2 text-orange-500">
+              <QrCode className="w-5 h-5" />
+              <span className="font-bold uppercase text-sm">Pague com PIX</span>
+            </div>
+
+            {order.pix_qrcode && (
+              <div className="bg-white p-4 rounded-xl flex justify-center">
+                <QRCodeSVG value={order.pix_code} size={200} />
+              </div>
+            )}
+
+            {order.pix_code && (
+              <div className="space-y-2">
+                <p className="text-xs text-zinc-500 text-center">Ou copie o código PIX:</p>
+                <div className="bg-zinc-800 p-3 rounded-xl">
+                  <p className="text-xs text-zinc-400 break-all font-mono">{order.pix_code.substring(0, 50)}...</p>
+                </div>
+                <button
+                  onClick={handleCopyPix}
+                  className="w-full bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                >
+                  {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                  {copied ? 'Copiado!' : 'Copiar Código PIX'}
+                </button>
+              </div>
+            )}
+
+            <div className="pt-4 border-t border-zinc-800">
+              <button
+                onClick={handleConfirmPayment}
+                disabled={confirming}
+                className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-black uppercase tracking-wider disabled:opacity-50 transition-colors"
+              >
+                {confirming ? 'Confirmando...' : 'Já paguei!'}
+              </button>
+              <p className="text-xs text-zinc-500 text-center mt-2">Clique após realizar o pagamento</p>
+            </div>
+          </div>
+        )}
+
+        {/* Order Details */}
+        <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+          <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Detalhes do Pedido</h3>
+          
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Cliente</span>
+              <span>{order.customer_name}</span>
+            </div>
+            {order.customer_phone && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Telefone</span>
+                <span>{order.customer_phone}</span>
+              </div>
+            )}
+            {order.address && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Endereço</span>
+                <span className="text-right">{order.address}{order.address_number ? `, ${order.address_number}` : ''}</span>
+              </div>
+            )}
+            {order.neighborhood_name && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Bairro</span>
+                <span>{order.neighborhood_name}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-zinc-800 pt-4">
+            <p className="text-xs text-zinc-500 uppercase font-bold mb-2">Itens</p>
+            <div className="whitespace-pre-wrap text-sm bg-zinc-800/50 p-3 rounded-xl">{order.items_text}</div>
+          </div>
+
+          <div className="border-t border-zinc-800 pt-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-zinc-500">Subtotal</span>
+              <span>R$ {(parseFloat(order.total) - parseFloat(order.delivery_fee || 0)).toFixed(2)}</span>
+            </div>
+            {parseFloat(order.delivery_fee || 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">Taxa de Entrega</span>
+                <span>R$ {parseFloat(order.delivery_fee).toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-xl font-black pt-2">
+              <span>Total</span>
+              <span className="text-orange-500">R$ {parseFloat(order.total).toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* History */}
+        {order.history && order.history.length > 0 && (
+          <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+            <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Histórico</h3>
+            <div className="space-y-3">
+              {order.history.map((h: any, i: number) => (
+                <div key={i} className="flex items-start gap-3">
+                  <div className={`w-2 h-2 rounded-full mt-1.5 ${i === 0 ? 'bg-orange-500' : 'bg-zinc-600'}`} />
+                  <div>
+                    <p className="text-sm">{h.status}</p>
+                    <p className="text-xs text-zinc-500">
+                      {new Date(h.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Help */}
+        <div className="text-center">
+          <p className="text-xs text-zinc-500">Dúvidas? Entre em contato pelo WhatsApp</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Customer Orders Component ---
+const CustomerOrders = ({ slug }: { slug: string }) => {
+  const navigate = useNavigate();
+  const [phone, setPhone] = useState('');
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+
+  const apiFetch = (url: string, options: any = {}) => {
+    return fetch(`/api/public${url}`, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'x-establishment-slug': slug,
+        'Content-Type': 'application/json'
+      }
+    });
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phone) return;
+
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/orders/${phone.replace(/\D/g, '')}`);
+      const data = await res.json();
+      setOrders(Array.isArray(data) ? data : []);
+      setSearched(true);
+    } catch (error) {
+      console.error('Erro ao buscar pedidos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statusConfig: Record<string, { label: string; color: string }> = {
+    'pending': { label: 'Pendente', color: 'bg-yellow-500' },
+    'confirmed': { label: 'Confirmado', color: 'bg-blue-500' },
+    'preparing': { label: 'Em Preparo', color: 'bg-orange-500' },
+    'delivering': { label: 'Saiu para Entrega', color: 'bg-purple-500' },
+    'completed': { label: 'Entregue', color: 'bg-green-500' },
+    'cancelled': { label: 'Cancelado', color: 'bg-red-500' }
+  };
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-white pb-8">
+      {/* Header */}
+      <div className="bg-zinc-900 border-b border-zinc-800 p-4 sticky top-0 z-10">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
+          <button onClick={() => navigate(`/e/${slug}`)} className="text-zinc-400 hover:text-white">
+            <ChevronRight className="w-6 h-6 rotate-180" />
+          </button>
+          <h1 className="font-black text-lg">Meus Pedidos</h1>
+          <div className="w-6" />
+        </div>
+      </div>
+
+      <div className="max-w-lg mx-auto p-4 space-y-4">
+        {/* Search Form */}
+        <form onSubmit={handleSearch} className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+          <div className="flex items-center gap-2 text-zinc-400">
+            <Package className="w-5 h-5" />
+            <span className="font-bold uppercase text-sm">Consultar Pedidos</span>
+          </div>
+          <p className="text-xs text-zinc-500">Digite seu telefone para ver seus pedidos</p>
+          <div className="flex gap-2">
+            <input
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="Seu telefone"
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500"
+            />
+            <button
+              type="submit"
+              disabled={loading || !phone}
+              className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold disabled:opacity-50 transition-colors"
+            >
+              {loading ? '...' : 'Buscar'}
+            </button>
+          </div>
+        </form>
+
+        {/* Orders List */}
+        {searched && (
+          <div className="space-y-3">
+            {orders.length === 0 ? (
+              <div className="text-center py-8">
+                <Package className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+                <p className="text-zinc-400">Nenhum pedido encontrado para este telefone</p>
+              </div>
+            ) : (
+              orders.map(order => {
+                const status = statusConfig[order.status] || statusConfig['pending'];
+                return (
+                  <button
+                    key={order.id}
+                    onClick={() => navigate(`/e/${slug}/pedido/${order.id}`)}
+                    className="w-full bg-zinc-900 rounded-2xl p-4 border border-zinc-800 text-left hover:border-zinc-700 transition-colors"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-bold">Pedido #{order.id}</p>
+                        <p className="text-xs text-zinc-500">
+                          {new Date(order.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <span className={`${status.color} text-white text-xs px-2 py-1 rounded-full font-bold`}>
+                        {status.label}
+                      </span>
+                    </div>
+                    <div className="text-xs text-zinc-400 line-clamp-2 mb-2">{order.items_text}</div>
+                    <p className="text-orange-500 font-bold">R$ {parseFloat(order.total).toFixed(2)}</p>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const EstablishmentApp = () => {
   const { slug } = useParams();
   const [establishment, setEstablishment] = useState<any>(null);
@@ -3130,6 +4044,8 @@ const EstablishmentApp = () => {
   return (
     <Routes>
       <Route path="/" element={<OnlineMenu slug={slug!} />} />
+      <Route path="/pedido/:id" element={<OrderTracking slug={slug!} />} />
+      <Route path="/meus-pedidos" element={<CustomerOrders slug={slug!} />} />
       <Route path="/admin" element={<AdminDashboard slug={slug!} />} />
     </Routes>
   );
