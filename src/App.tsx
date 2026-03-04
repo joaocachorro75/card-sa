@@ -1067,7 +1067,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
           </div>
           <div class="total">
             <span>TOTAL:</span>
-            <span>R$ ${order.total.toFixed(2)}</span>
+            <span>R$ ${(parseFloat(order.total) || 0).toFixed(2)}</span>
           </div>
           <p><strong>Pagamento:</strong> ${order.payment_method.toUpperCase()}</p>
           <div class="footer">
