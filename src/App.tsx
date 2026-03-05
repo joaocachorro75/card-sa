@@ -3219,6 +3219,68 @@ const SuperAdmin = () => {
     plan_id: '',
     status: 'active'
   });
+  const [payments, setPayments] = useState<any[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+
+  const fetchPayments = async (token: string) => {
+    setPaymentsLoading(true);
+    try {
+      const res = await window.fetch('/api/superadmin/payments?status=pending', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setPayments(data);
+    } catch (err) {
+      console.error('Erro ao buscar pagamentos:', err);
+    } finally {
+      setPaymentsLoading(false);
+    }
+  };
+
+  const handleConfirmPayment = async (paymentId: number) => {
+    if (!confirm('Confirmar este pagamento?')) return;
+    try {
+      const res = await window.fetch(`/api/superadmin/payments/${paymentId}/confirm`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Pagamento confirmado!');
+        fetchPayments(authToken);
+        fetchData(authToken);
+      } else {
+        alert(data.error || 'Erro ao confirmar pagamento');
+      }
+    } catch (err) {
+      alert('Erro ao confirmar pagamento');
+    }
+  };
+
+  const handleRejectPayment = async (paymentId: number) => {
+    if (!confirm('Rejeitar este pagamento?')) return;
+    try {
+      const res = await window.fetch(`/api/superadmin/payments/${paymentId}/reject`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Pagamento rejeitado!');
+        fetchPayments(authToken);
+      } else {
+        alert(data.error || 'Erro ao rejeitar pagamento');
+      }
+    } catch (err) {
+      alert('Erro ao rejeitar pagamento');
+    }
+  };
 
   const fetchData = async (token: string) => {
     setLoading(true);
@@ -3253,6 +3315,7 @@ const SuperAdmin = () => {
   useEffect(() => {
     if (isSuperLoggedIn && authToken) {
       fetchData(authToken);
+      fetchPayments(authToken);
     }
   }, [isSuperLoggedIn, authToken]);
 
@@ -3458,7 +3521,7 @@ const SuperAdmin = () => {
       </nav>
 
       <main className="max-w-7xl mx-auto p-6 space-y-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-brand-surface p-6 rounded-3xl border border-zinc-800">
             <p className="text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Total Lojas</p>
             <p className="text-4xl font-black">{establishments.length}</p>
@@ -3467,7 +3530,59 @@ const SuperAdmin = () => {
             <p className="text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Planos Ativos</p>
             <p className="text-4xl font-black">{plans.length}</p>
           </div>
+          <div className="bg-brand-surface p-6 rounded-3xl border border-zinc-800">
+            <p className="text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Pagamentos Pendentes</p>
+            <p className="text-4xl font-black text-orange-500">{payments.length}</p>
+          </div>
         </div>
+
+        {/* Pagamentos Pendentes */}
+        {payments.length > 0 && (
+          <section>
+            <h2 className="text-3xl font-black uppercase tracking-tighter mb-8 flex items-center gap-3">
+              <DollarSign className="text-orange-500" /> Pagamentos Pendentes
+            </h2>
+            <div className="bg-brand-surface rounded-[32px] border border-zinc-800 overflow-hidden">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-zinc-500 text-[10px] font-black uppercase tracking-widest border-b border-zinc-800">
+                    <th className="px-6 py-4">ID</th>
+                    <th className="px-6 py-4">Estabelecimento</th>
+                    <th className="px-6 py-4">Valor</th>
+                    <th className="px-6 py-4">Data</th>
+                    <th className="px-6 py-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {payments.map(pay => (
+                    <tr key={pay.id} className="hover:bg-zinc-900/50 transition-colors">
+                      <td className="px-6 py-4 font-bold">#{pay.id}</td>
+                      <td className="px-6 py-4">{establishments.find(e => e.id === pay.establishment_id)?.name || `ID: ${pay.establishment_id}`}</td>
+                      <td className="px-6 py-4 text-orange-500 font-bold">R$ {parseFloat(pay.amount).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-zinc-500">{new Date(pay.created_at).toLocaleDateString('pt-BR')}</td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex gap-2 justify-end">
+                          <button 
+                            onClick={() => handleConfirmPayment(pay.id)}
+                            className="px-4 py-2 bg-green-500/10 text-green-500 rounded-xl font-bold text-xs hover:bg-green-500/20 transition-colors"
+                          >
+                            Confirmar
+                          </button>
+                          <button 
+                            onClick={() => handleRejectPayment(pay.id)}
+                            className="px-4 py-2 bg-red-500/10 text-red-500 rounded-xl font-bold text-xs hover:bg-red-500/20 transition-colors"
+                          >
+                            Rejeitar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         <section>
           <div className="flex justify-between items-center mb-8">
