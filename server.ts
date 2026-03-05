@@ -1770,6 +1770,413 @@ _Equipe To-Ligado.com_`;
   }
 });
 
+// ============================================
+// SISTEMA DE MENSALIDADES COM PIX
+// ============================================
+
+// Endpoint para gerar PIX de mensalidade
+app.post('/api/e/subscription/generate-pix', async (req: any, res) => {
+  try {
+    const { plan_id, months = 1 } = req.body;
+    
+    // Buscar plano
+    const [planRows] = await pool.execute('SELECT * FROM plans WHERE id = ?', [plan_id || 2]);
+    const plan = (planRows as any[])[0];
+    
+    if (!plan) {
+      return res.status(404).json({ error: 'Plano não encontrado' });
+    }
+    
+    const amount = parseFloat(plan.price) * months;
+    
+    // Buscar chave PIX do estabelecimento (ou usar chave padrão do sistema)
+    const [settingsRows] = await pool.execute(
+      "SELECT value FROM settings WHERE establishment_id = ? AND `key` = 'pix_key'",
+      [req.establishment.id]
+    );
+    const pixKey = (settingsRows as any[])[0]?.value || process.env.DEFAULT_PIX_KEY || '11999999999';
+    
+    // Gerar código PIX
+    const txid = `SUB${req.establishment.id}${Date.now()}`.substring(0, 25);
+    const pixCode = generatePixCode(pixKey, amount, `Mensalidade ${plan.name}`, txid);
+    
+    // Criar registro de pagamento na tabela payments
+    const [result] = await pool.execute(`
+      INSERT INTO payments (order_id, establishment_id, amount, pix_code, pix_qrcode, status, created_at)
+      VALUES (0, ?, ?, ?, ?, 'pending', NOW())
+    `, [req.establishment.id, amount, pixCode, pixCode]);
+    
+    const paymentId = (result as any).insertId;
+    
+    res.json({
+      success: true,
+      payment_id: paymentId,
+      pix_code: pixCode,
+      pix_qrcode: pixCode,
+      amount: amount,
+      plan_name: plan.name,
+      months: months
+    });
+  } catch (error) {
+    console.error('Erro ao gerar PIX:', error);
+    res.status(500).json({ error: 'Erro ao gerar PIX' });
+  }
+});
+
+// Endpoint para buscar status da assinatura
+app.get('/api/e/subscription/status', async (req: any, res) => {
+  try {
+    const [rows] = await pool.execute(`
+      SELECT e.*, p.name as plan_name, p.price as plan_price, p.max_products, p.enable_ai, p.enable_reservations 
+      FROM establishments e 
+      JOIN plans p ON e.plan_id = p.id 
+      WHERE e.id = ?
+    `, [req.establishment.id]);
+    
+    const est = (rows as any[])[0];
+    
+    // Buscar pagamentos pendentes
+    const [pendingPayments] = await pool.execute(`
+      SELECT * FROM payments 
+      WHERE establishment_id = ? AND status = 'pending' 
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `, [req.establishment.id]);
+    
+    res.json({
+      plan: {
+        id: est.plan_id,
+        name: est.plan_name,
+        price: parseFloat(est.plan_price) || 0,
+        maxProducts: est.max_products,
+        features: {
+          ai: est.enable_ai === 1,
+          reservations: est.enable_reservations === 1
+        }
+      },
+      status: est.status,
+      paid_until: est.paid_until,
+      trial_ends_at: est.trial_ends_at,
+      last_payment_at: est.last_payment_at,
+      pending_payment: (pendingPayments as any[])[0] || null
+    });
+  } catch (error) {
+    console.error('Erro ao buscar status da assinatura:', error);
+    res.status(500).json({ error: 'Erro ao buscar status da assinatura' });
+  }
+});
+
+// Endpoint público para cadastro com pagamento
+app.post('/api/public/register-with-payment', async (req, res) => {
+  const { name, slug, owner_whatsapp, password, plan_id = 1 } = req.body;
+  
+  try {
+    // Verificar se slug já existe
+    const [existing] = await pool.execute('SELECT id FROM establishments WHERE slug = ?', [slug]);
+    if ((existing as any[]).length > 0) {
+      return res.status(400).json({ error: 'Slug já está em uso' });
+    }
+    
+    // Buscar plano
+    const [planRows] = await pool.execute('SELECT * FROM plans WHERE id = ?', [plan_id]);
+    const plan = (planRows as any[])[0];
+    
+    if (!plan) {
+      return res.status(400).json({ error: 'Plano não encontrado' });
+    }
+    
+    // Criar estabelecimento
+    const status = plan_id === 1 ? 'active' : 'pending_payment'; // Gratuito ativo, Premium aguarda pagamento
+    const [result] = await pool.execute(
+      'INSERT INTO establishments (name, slug, owner_whatsapp, password, plan_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+      [name, slug, owner_whatsapp, password, plan_id, status]
+    );
+    
+    const establishmentId = (result as any).insertId;
+    
+    // Criar configurações padrão
+    const defaultSettings = [
+      [establishmentId, 'store_name', name],
+      [establishmentId, 'pix_key', ''],
+      [establishmentId, 'whatsapp_kitchen', owner_whatsapp],
+      [establishmentId, 'whatsapp_cashier', owner_whatsapp],
+      [establishmentId, 'primary_color', '#f97316'],
+      [establishmentId, 'is_open', '1'],
+    ];
+    
+    for (const [estId, key, value] of defaultSettings) {
+      await pool.execute(
+        'INSERT INTO settings (establishment_id, `key`, value) VALUES (?, ?, ?)',
+        [estId, key, value]
+      );
+    }
+    
+    // Criar categoria padrão
+    await pool.execute(
+      'INSERT INTO categories (establishment_id, name) VALUES (?, ?)',
+      [establishmentId, 'Lanches']
+    );
+    
+    // Criar bairro padrão
+    await pool.execute(
+      'INSERT INTO neighborhoods (establishment_id, name, delivery_fee) VALUES (?, ?, ?)',
+      [establishmentId, 'Centro', 5.00]
+    );
+    
+    // Criar mesas padrão (5 mesas)
+    for (let i = 1; i <= 5; i++) {
+      await pool.execute(
+        'INSERT INTO tables (establishment_id, number) VALUES (?, ?)',
+        [establishmentId, i]
+      );
+    }
+    
+    // Se for Premium, gerar PIX
+    let paymentInfo = null;
+    if (plan_id !== 1 && parseFloat(plan.price) > 0) {
+      const amount = parseFloat(plan.price);
+      const pixKey = process.env.DEFAULT_PIX_KEY || '11999999999';
+      const txid = `NEW${establishmentId}${Date.now()}`.substring(0, 25);
+      const pixCode = generatePixCode(pixKey, amount, `Mensalidade ${plan.name}`, txid);
+      
+      // Criar registro de pagamento
+      const [paymentResult] = await pool.execute(`
+        INSERT INTO payments (order_id, establishment_id, amount, pix_code, pix_qrcode, status, created_at)
+        VALUES (0, ?, ?, ?, ?, 'pending', NOW())
+      `, [establishmentId, amount, pixCode, pixCode]);
+      
+      paymentInfo = {
+        payment_id: (paymentResult as any).insertId,
+        pix_code: pixCode,
+        pix_qrcode: pixCode,
+        amount: amount,
+        plan_name: plan.name
+      };
+    }
+    
+    res.json({
+      success: true,
+      establishment_id: establishmentId,
+      slug: slug,
+      status: status,
+      payment: paymentInfo,
+      message: status === 'pending_payment' 
+        ? 'Cadastro realizado! Pague a mensalidade para ativar seu cardápio.' 
+        : 'Cadastro realizado com sucesso!'
+    });
+  } catch (error) {
+    console.error('Erro ao registrar:', error);
+    res.status(500).json({ error: 'Erro ao realizar cadastro' });
+  }
+});
+
+// ============================================
+// SUPERADMIN - GERENCIAR PAGAMENTOS
+// ============================================
+
+// Listar pagamentos (com filtros)
+app.get('/api/superadmin/payments', async (req: any, res) => {
+  try {
+    const { status, establishment_id, limit = 50 } = req.query;
+    
+    let query = `
+      SELECT p.*, e.name as establishment_name, e.slug as establishment_slug, e.owner_whatsapp,
+             pl.name as plan_name
+      FROM payments p 
+      JOIN establishments e ON p.establishment_id = e.id
+      LEFT JOIN plans pl ON e.plan_id = pl.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+    
+    if (status) {
+      query += ` AND p.status = ?`;
+      params.push(status);
+    }
+    
+    if (establishment_id) {
+      query += ` AND p.establishment_id = ?`;
+      params.push(establishment_id);
+    }
+    
+    query += ` ORDER BY p.created_at DESC LIMIT ?`;
+    params.push(parseInt(limit));
+    
+    const [rows] = await pool.execute(query, params);
+    
+    // Formatar valores
+    const payments = (rows as any[]).map(p => ({
+      ...p,
+      amount: parseFloat(p.amount) || 0,
+      created_at: p.created_at ? new Date(p.created_at).toISOString() : null,
+      paid_at: p.paid_at ? new Date(p.paid_at).toISOString() : null
+    }));
+    
+    res.json(payments);
+  } catch (error) {
+    console.error('Erro ao buscar pagamentos:', error);
+    res.status(500).json({ error: 'Erro ao buscar pagamentos' });
+  }
+});
+
+// Confirmar pagamento (ativa estabelecimento e envia WhatsApp)
+app.post('/api/superadmin/payments/:id/confirm', async (req: any, res) => {
+  try {
+    const paymentId = req.params.id;
+    const adminId = req.user?.username || 'superadmin';
+    
+    // Buscar pagamento
+    const [paymentRows] = await pool.execute(`
+      SELECT p.*, e.owner_whatsapp, e.slug, e.name as establishment_name, pl.name as plan_name
+      FROM payments p
+      JOIN establishments e ON p.establishment_id = e.id
+      LEFT JOIN plans pl ON e.plan_id = pl.id
+      WHERE p.id = ?
+    `, [paymentId]);
+    
+    const payment = (paymentRows as any[])[0];
+    
+    if (!payment) {
+      return res.status(404).json({ error: 'Pagamento não encontrado' });
+    }
+    
+    if (payment.status === 'paid' || payment.status === 'confirmed') {
+      return res.status(400).json({ error: 'Pagamento já foi confirmado' });
+    }
+    
+    // Atualizar status do pagamento
+    await pool.execute(`
+      UPDATE payments 
+      SET status = 'confirmed', paid_at = NOW(), confirmed_by = ?
+      WHERE id = ?
+    `, [adminId, paymentId]);
+    
+    // Ativar/estender estabelecimento
+    await pool.execute(`
+      UPDATE establishments 
+      SET status = 'active', 
+          plan_id = 2,
+          paid_until = COALESCE(DATE_ADD(paid_until, INTERVAL 1 MONTH), DATE_ADD(CURDATE(), INTERVAL 1 MONTH)),
+          last_payment_at = NOW()
+      WHERE id = ?
+    `, [payment.establishment_id]);
+    
+    // Enviar WhatsApp para o cliente
+    const message = `✅ *Pagamento Confirmado!*
+
+🍽️ *Mais Que Cardápio*
+
+Olá! Seu pagamento de *R$ ${parseFloat(payment.amount).toFixed(2)}* foi confirmado com sucesso!
+
+📋 *Plano:* ${payment.plan_name || 'Premium'}
+📅 *Válido até:* ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')}
+
+Seu cardápio está ativo! 🎉
+
+🔗 Acesse: ${BASE_URL}/e/${payment.slug}
+
+Obrigado pela confiança!
+
+_Equipe To-Ligado.com_`;
+    
+    await sendWhatsAppMessage(payment.owner_whatsapp, message);
+    
+    // Notificar admin sobre confirmação
+    await sendWhatsAppMessage('5591980124904', `✅ *Pagamento Confirmado*\n\n💳 ID: #${paymentId}\n🏪 ${payment.establishment_name}\n💰 R$ ${parseFloat(payment.amount).toFixed(2)}\n📱 ${payment.owner_whatsapp}`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Pagamento confirmado e cliente notificado via WhatsApp!' 
+    });
+  } catch (error) {
+    console.error('Erro ao confirmar pagamento:', error);
+    res.status(500).json({ error: 'Erro ao confirmar pagamento' });
+  }
+});
+
+// Rejeitar pagamento
+app.post('/api/superadmin/payments/:id/reject', async (req: any, res) => {
+  try {
+    const paymentId = req.params.id;
+    const { reason } = req.body;
+    
+    // Buscar pagamento
+    const [paymentRows] = await pool.execute(`
+      SELECT p.*, e.owner_whatsapp, e.slug, e.name as establishment_name
+      FROM payments p
+      JOIN establishments e ON p.establishment_id = e.id
+      WHERE p.id = ?
+    `, [paymentId]);
+    
+    const payment = (paymentRows as any[])[0];
+    
+    if (!payment) {
+      return res.status(404).json({ error: 'Pagamento não encontrado' });
+    }
+    
+    // Atualizar status do pagamento
+    await pool.execute(`
+      UPDATE payments 
+      SET status = 'rejected', notes = ?
+      WHERE id = ?
+    `, [reason || 'Pagamento rejeitado', paymentId]);
+    
+    // Notificar cliente
+    const message = `❌ *Pagamento Rejeitado*
+
+🍽️ *Mais Que Cardápio*
+
+Olá! Infelizmente não foi possível confirmar seu pagamento.
+
+${reason ? `*Motivo:* ${reason}` : ''}
+
+Por favor, entre em contato para regularizar.
+
+🔗 ${BASE_URL}/e/${payment.slug}/admin/assinatura
+
+_Equipe To-Ligado.com_`;
+    
+    await sendWhatsAppMessage(payment.owner_whatsapp, message);
+    
+    res.json({ 
+      success: true, 
+      message: 'Pagamento rejeitado e cliente notificado.' 
+    });
+  } catch (error) {
+    console.error('Erro ao rejeitar pagamento:', error);
+    res.status(500).json({ error: 'Erro ao rejeitar pagamento' });
+  }
+});
+
+// Buscar detalhes de um pagamento específico
+app.get('/api/superadmin/payments/:id', async (req: any, res) => {
+  try {
+    const [rows] = await pool.execute(`
+      SELECT p.*, e.name as establishment_name, e.slug as establishment_slug, 
+             e.owner_whatsapp, e.status as establishment_status,
+             pl.name as plan_name
+      FROM payments p
+      JOIN establishments e ON p.establishment_id = e.id
+      LEFT JOIN plans pl ON e.plan_id = pl.id
+      WHERE p.id = ?
+    `, [req.params.id]);
+    
+    const payment = (rows as any[])[0];
+    
+    if (!payment) {
+      return res.status(404).json({ error: 'Pagamento não encontrado' });
+    }
+    
+    res.json({
+      ...payment,
+      amount: parseFloat(payment.amount) || 0
+    });
+  } catch (error) {
+    console.error('Erro ao buscar pagamento:', error);
+    res.status(500).json({ error: 'Erro ao buscar pagamento' });
+  }
+});
+
 // Static files
 if (process.env.NODE_ENV !== "production") {
   const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
