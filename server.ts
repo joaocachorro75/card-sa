@@ -835,10 +835,22 @@ app.get("/api/public/orders/id/:id", async (req, res) => {
       SELECT * FROM order_history WHERE order_id = ? ORDER BY created_at DESC
     `, [id]);
     
+    // Buscar WhatsApp do admin (cashier ou kitchen)
+    const [settingsRows] = await pool.execute(
+      "SELECT `key`, value FROM settings WHERE establishment_id = ? AND `key` IN ('whatsapp_cashier', 'whatsapp_kitchen')",
+      [estId]
+    );
+    
+    const settings: Record<string, string> = {};
+    for (const row of settingsRows as any[]) {
+      settings[row.key] = row.value;
+    }
+    
     res.json({ 
       ...order, 
       history: historyRows,
-      establishment_name: estName 
+      establishment_name: estName,
+      admin_whatsapp: settings.whatsapp_cashier || settings.whatsapp_kitchen || ''
     });
   } catch (error) {
     console.error("Erro ao buscar pedido:", error);

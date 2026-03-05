@@ -3508,6 +3508,8 @@ const OrderTracking = ({ slug }: { slug: string }) => {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [proofImage, setProofImage] = useState<string | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
 
   const apiFetch = (url: string, options: any = {}) => {
     return fetch(`/api/public${url}`, {
@@ -3546,16 +3548,54 @@ const OrderTracking = ({ slug }: { slug: string }) => {
     }
   };
 
+  const handleProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Validar tipo
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, envie uma imagem');
+      return;
+    }
+    
+    // Validar tamanho (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Imagem muito grande. Máximo 5MB');
+      return;
+    }
+    
+    // Criar preview
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setProofPreview(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+    
+    // Converter para base64
+    const reader2 = new FileReader();
+    reader2.onload = (event) => {
+      setProofImage(event.target?.result as string);
+    };
+    reader2.readAsDataURL(file);
+  };
+
   const handleConfirmPayment = async () => {
-    if (!confirm('Você confirma que já realizou o pagamento PIX?')) return;
+    if (!proofImage && !confirm('Tem certeza que deseja confirmar sem enviar comprovante?')) {
+      return;
+    }
     
     setConfirming(true);
     try {
-      const res = await apiFetch(`/orders/${id}/confirm-payment`, { method: 'POST' });
+      const res = await apiFetch(`/orders/${id}/confirm-payment`, { 
+        method: 'POST',
+        body: JSON.stringify({ proof_image: proofImage })
+      });
       const data = await res.json();
       if (data.success) {
         fetchOrder();
-        alert('Pagamento confirmado! Aguarde a confirmação do estabelecimento.');
+        alert('Comprovante enviado! Aguarde a confirmação do estabelecimento.');
+        setProofImage(null);
+        setProofPreview(null);
       } else {
         alert(data.error || 'Erro ao confirmar pagamento');
       }
@@ -3671,15 +3711,35 @@ const OrderTracking = ({ slug }: { slug: string }) => {
               </div>
             )}
 
-            <div className="pt-4 border-t border-zinc-800">
+            <div className="pt-4 border-t border-zinc-800 space-y-3">
+              {/* Botão Enviar Comprovante pelo WhatsApp */}
+              <button
+                onClick={() => {
+                  const adminPhone = order.admin_whatsapp || '5511999999999';
+                  const message = `📸 *Comprovante de Pagamento*\n\nPedido #${order.id}\nValor: R$ ${parseFloat(order.total).toFixed(2)}\n\nEnvie a imagem do comprovante PIX abaixo:`;
+                  const whatsappUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(message)}`;
+                  window.open(whatsappUrl, '_blank');
+                }}
+                className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Enviar Comprovante pelo WhatsApp
+              </button>
+              
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-zinc-700" />
+                <span className="text-xs text-zinc-500">ou</span>
+                <div className="flex-1 h-px bg-zinc-700" />
+              </div>
+              
               <button
                 onClick={handleConfirmPayment}
                 disabled={confirming}
-                className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-black uppercase tracking-wider disabled:opacity-50 transition-colors"
+                className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-4 rounded-xl font-black uppercase tracking-wider disabled:opacity-50 transition-colors"
               >
                 {confirming ? 'Confirmando...' : 'Já paguei!'}
               </button>
-              <p className="text-xs text-zinc-500 text-center mt-2">Clique após realizar o pagamento</p>
+              <p className="text-xs text-zinc-500 text-center">Envie o comprovante pelo WhatsApp para confirmação mais rápida</p>
             </div>
           </div>
         )}
