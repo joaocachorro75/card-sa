@@ -222,6 +222,80 @@ async function initDatabase() {
     FOREIGN KEY (table_id) REFERENCES tables(id)
   )`);
 
+  // Adicionar colunas que podem estar faltando em bancos existentes
+  // Verificar se customer_email existe, se não, adicionar
+  try {
+    const [cols] = await connection.execute(`SHOW COLUMNS FROM orders LIKE 'customer_email'`);
+    if ((cols as any[]).length === 0) {
+      await connection.execute(`ALTER TABLE orders ADD COLUMN customer_email VARCHAR(255)`);
+      console.log('✅ Coluna customer_email adicionada');
+    }
+  } catch (e) { console.log('Coluna customer_email já existe ou erro:', e); }
+  
+  try {
+    const [cols] = await connection.execute(`SHOW COLUMNS FROM orders LIKE 'address_number'`);
+    if ((cols as any[]).length === 0) {
+      await connection.execute(`ALTER TABLE orders ADD COLUMN address_number VARCHAR(20)`);
+      console.log('✅ Coluna address_number adicionada');
+    }
+  } catch (e) { }
+  
+  try {
+    const [cols] = await connection.execute(`SHOW COLUMNS FROM orders LIKE 'address_complement'`);
+    if ((cols as any[]).length === 0) {
+      await connection.execute(`ALTER TABLE orders ADD COLUMN address_complement VARCHAR(255)`);
+      console.log('✅ Coluna address_complement adicionada');
+    }
+  } catch (e) { }
+  
+  try {
+    const [cols] = await connection.execute(`SHOW COLUMNS FROM orders LIKE 'address_reference'`);
+    if ((cols as any[]).length === 0) {
+      await connection.execute(`ALTER TABLE orders ADD COLUMN address_reference VARCHAR(255)`);
+      console.log('✅ Coluna address_reference adicionada');
+    }
+  } catch (e) { }
+  
+  try {
+    const [cols] = await connection.execute(`SHOW COLUMNS FROM orders LIKE 'payment_status'`);
+    if ((cols as any[]).length === 0) {
+      await connection.execute(`ALTER TABLE orders ADD COLUMN payment_status VARCHAR(50) DEFAULT 'pending'`);
+      console.log('✅ Coluna payment_status adicionada');
+    }
+  } catch (e) { }
+  
+  try {
+    const [cols] = await connection.execute(`SHOW COLUMNS FROM orders LIKE 'pix_code'`);
+    if ((cols as any[]).length === 0) {
+      await connection.execute(`ALTER TABLE orders ADD COLUMN pix_code TEXT`);
+      console.log('✅ Coluna pix_code adicionada');
+    }
+  } catch (e) { }
+  
+  try {
+    const [cols] = await connection.execute(`SHOW COLUMNS FROM orders LIKE 'pix_qrcode'`);
+    if ((cols as any[]).length === 0) {
+      await connection.execute(`ALTER TABLE orders ADD COLUMN pix_qrcode TEXT`);
+      console.log('✅ Coluna pix_qrcode adicionada');
+    }
+  } catch (e) { }
+  
+  try {
+    const [cols] = await connection.execute(`SHOW COLUMNS FROM orders LIKE 'pix_expires_at'`);
+    if ((cols as any[]).length === 0) {
+      await connection.execute(`ALTER TABLE orders ADD COLUMN pix_expires_at DATETIME`);
+      console.log('✅ Coluna pix_expires_at adicionada');
+    }
+  } catch (e) { }
+  
+  try {
+    const [cols] = await connection.execute(`SHOW COLUMNS FROM orders LIKE 'delivery_fee'`);
+    if ((cols as any[]).length === 0) {
+      await connection.execute(`ALTER TABLE orders ADD COLUMN delivery_fee DECIMAL(10,2) DEFAULT 0`);
+      console.log('✅ Coluna delivery_fee adicionada');
+    }
+  } catch (e) { }
+
   // Seed demo data if empty
   const [plans] = await connection.execute("SELECT COUNT(*) as count FROM plans");
   if ((plans as any)[0].count === 0) {
