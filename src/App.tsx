@@ -1403,11 +1403,211 @@ const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
   );
 };
 
+// --- Subscription Tab Component ---
+const SubscriptionTab = ({ apiFetch, settings }: { apiFetch: any, settings: any }) => {
+  const [subscription, setSubscription] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [generatingPix, setGeneratingPix] = useState(false);
+  const [pixData, setPixData] = useState<any>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetchSubscription();
+  }, []);
+
+  const fetchSubscription = async () => {
+    try {
+      const res = await apiFetch('/subscription/status');
+      const data = await res.json();
+      setSubscription(data);
+    } catch (error) {
+      console.error('Erro ao buscar assinatura:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGeneratePix = async () => {
+    setGeneratingPix(true);
+    try {
+      const res = await apiFetch('/subscription/generate-pix', {
+        method: 'POST',
+        body: JSON.stringify({ plan_id: 2, months: 1 })
+      });
+      const data = await res.json();
+      setPixData(data);
+    } catch (error) {
+      console.error('Erro ao gerar PIX:', error);
+      alert('Erro ao gerar PIX. Tente novamente.');
+    } finally {
+      setGeneratingPix(false);
+    }
+  };
+
+  const handleCopyPix = () => {
+    if (pixData?.pix_code) {
+      navigator.clipboard.writeText(pixData.pix_code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleSendWhatsApp = () => {
+    const adminPhone = settings.whatsapp_cashier || '5511999999999';
+    const message = `💰 *Comprovante de Pagamento - Mensalidade*\n\n📋 Plano: ${pixData?.plan_name || 'Premium'}\n💵 Valor: R$ ${pixData?.amount?.toFixed(2) || '49.90'}\n📅 Referente a: ${pixData?.months || 1} mês(es)\n\nSeguem anexos o comprovante de pagamento.`;
+    const whatsappUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-8">
+        <p className="text-zinc-500">Carregando assinatura...</p>
+      </div>
+    );
+  }
+
+  const isPremium = subscription?.plan?.id === 2;
+  const paidUntil = subscription?.paid_until ? new Date(subscription.paid_until) : null;
+  const isExpired = paidUntil && paidUntil < new Date();
+
+  return (
+    <div className="space-y-6">
+      {/* Status da Assinatura */}
+      <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-zinc-900">Sua Assinatura</h2>
+            <p className="text-zinc-500 text-sm">Gerencie seu plano e pagamentos</p>
+          </div>
+          <div className={`px-4 py-2 rounded-full font-bold text-sm ${isPremium ? 'bg-purple-100 text-purple-700' : 'bg-zinc-100 text-zinc-600'}`}>
+            {subscription?.plan?.name || 'Gratuito'}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-zinc-50 rounded-xl p-4">
+            <p className="text-xs text-zinc-500 uppercase font-bold mb-1">Plano Atual</p>
+            <p className="text-xl font-bold text-zinc-900">{subscription?.plan?.name || 'Gratuito'}</p>
+          </div>
+          <div className="bg-zinc-50 rounded-xl p-4">
+            <p className="text-xs text-zinc-500 uppercase font-bold mb-1">Status</p>
+            <p className={`text-xl font-bold ${isExpired ? 'text-red-500' : 'text-green-500'}`}>
+              {isExpired ? 'Expirado' : subscription?.status || 'Ativo'}
+            </p>
+          </div>
+          <div className="bg-zinc-50 rounded-xl p-4">
+            <p className="text-xs text-zinc-500 uppercase font-bold mb-1">Válido Até</p>
+            <p className="text-xl font-bold text-zinc-900">
+              {paidUntil ? paidUntil.toLocaleDateString('pt-BR') : 'N/A'}
+            </p>
+          </div>
+        </div>
+
+        {/* Features */}
+        <div className="mt-6 p-4 bg-zinc-50 rounded-xl">
+          <p className="text-xs text-zinc-500 uppercase font-bold mb-3">Recursos do Plano</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="flex items-center gap-2">
+              <span className={subscription?.plan?.maxProducts >= 100 ? 'text-green-500' : 'text-zinc-400'}>✓</span>
+              <span className="text-sm">{subscription?.plan?.maxProducts || 10} produtos</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={subscription?.plan?.features?.ai ? 'text-green-500' : 'text-zinc-400'}>✓</span>
+              <span className="text-sm">IA Insights</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={subscription?.plan?.features?.reservations ? 'text-green-500' : 'text-zinc-400'}>✓</span>
+              <span className="text-sm">Reservas</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-green-500">✓</span>
+              <span className="text-sm">Suporte</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Pagamento da Mensalidade */}
+      {!isPremium || isExpired ? (
+        <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <CreditCard className="w-6 h-6 text-orange-500" />
+            <h3 className="text-xl font-bold text-zinc-900">Pagar Mensalidade</h3>
+          </div>
+
+          {!pixData ? (
+            <div className="text-center py-8">
+              <p className="text-zinc-600 mb-4">Clique no botão abaixo para gerar o QR Code PIX</p>
+              <button
+                onClick={handleGeneratePix}
+                disabled={generatingPix}
+                className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 transition-colors"
+              >
+                {generatingPix ? 'Gerando PIX...' : 'Gerar PIX - R$ 49,90'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* QR Code */}
+              <div className="flex justify-center">
+                <div className="bg-white p-4 rounded-xl border border-zinc-200">
+                  <QRCodeSVG value={pixData.pix_code} size={200} />
+                </div>
+              </div>
+
+              {/* Copiar código */}
+              <div className="space-y-2">
+                <p className="text-xs text-zinc-500 text-center">Ou copie o código PIX:</p>
+                <div className="bg-zinc-100 p-3 rounded-xl">
+                  <p className="text-xs text-zinc-600 break-all font-mono text-center">{pixData.pix_code.substring(0, 50)}...</p>
+                </div>
+                <button
+                  onClick={handleCopyPix}
+                  className="w-full bg-zinc-100 hover:bg-zinc-200 text-zinc-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                >
+                  {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                  {copied ? 'Copiado!' : 'Copiar Código PIX'}
+                </button>
+              </div>
+
+              {/* Enviar Comprovante */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-zinc-200" />
+                <span className="text-xs text-zinc-500">após pagar</span>
+                <div className="flex-1 h-px bg-zinc-200" />
+              </div>
+
+              <button
+                onClick={handleSendWhatsApp}
+                className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-xl font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Enviar Comprovante pelo WhatsApp
+              </button>
+
+              <p className="text-xs text-zinc-500 text-center">
+                Após enviar o comprovante, aguarde a confirmação do administrador.
+              </p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-8 text-center">
+          <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-green-800 mb-2">Assinatura Ativa!</h3>
+          <p className="text-green-600">Sua assinatura Premium está ativa até {paidUntil?.toLocaleDateString('pt-BR')}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AdminDashboard = ({ slug }: { slug: string }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
-  const [activeTab, setActiveTab] = useState<'products' | 'tables' | 'delivery' | 'categories' | 'orders' | 'commands' | 'reservations' | 'ai' | 'help' | 'settings'>('orders');
+  const [activeTab, setActiveTab] = useState<'products' | 'tables' | 'delivery' | 'categories' | 'orders' | 'commands' | 'reservations' | 'ai' | 'help' | 'settings' | 'subscription'>('orders');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [tables, setTables] = useState<{id: number, number: number}[]>([]);
   const [commands, setCommands] = useState<any[]>([]);
@@ -1719,6 +1919,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             { id: 'categories', label: 'Categorias', icon: LayoutDashboard },
             { id: 'delivery', label: 'Delivery', icon: Bike },
             { id: 'tables', label: 'Mesas', icon: QrCode },
+            { id: 'subscription', label: 'Assinatura', icon: CreditCard },
             { id: 'ai', label: 'IA Insights', icon: Sparkles },
             { id: 'settings', label: 'Configurações', icon: Settings }
           ].map(tab => {
@@ -2382,6 +2583,10 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
               </button>
             </form>
           </div>
+        )}
+
+        {activeTab === 'subscription' && (
+          <SubscriptionTab apiFetch={apiFetch} settings={settings} />
         )}
 
         {activeTab === 'help' && (
