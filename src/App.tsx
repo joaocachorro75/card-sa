@@ -1655,6 +1655,13 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             <p className="text-zinc-500 font-bold uppercase text-xs tracking-widest mt-1">Gerencie seu cardápio e pedidos</p>
           </div>
           <div className="flex items-center gap-4 w-full md:w-auto">
+            <Link
+              to={`/e/${slug}/admin/assinatura`}
+              className="flex-1 md:flex-none px-6 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl bg-purple-500/10 text-purple-500 border border-purple-500/20 shadow-purple-500/5 hover:bg-purple-500/20"
+            >
+              <CreditCard className="w-5 h-5" />
+              Assinatura
+            </Link>
             <button 
               onClick={async () => {
                 const newStatus = settings.is_open === "1" ? "0" : "1";
@@ -3950,6 +3957,253 @@ const CustomerOrders = ({ slug }: { slug: string }) => {
   );
 };
 
+// --- Subscription Page Component ---
+const SubscriptionPage = ({ slug }: { slug: string }) => {
+  const navigate = useNavigate();
+  const [subscription, setSubscription] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [pixLoading, setPixLoading] = useState(false);
+  const [pixData, setPixData] = useState<any>(null);
+  const [copied, setCopied] = useState(false);
+
+  const apiFetch = (url: string, options: any = {}) => {
+    return fetch(`/api/e${url}`, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'x-establishment-slug': slug,
+        'Content-Type': 'application/json'
+      }
+    });
+  };
+
+  useEffect(() => {
+    apiFetch('/subscription/status')
+      .then(res => res.json())
+      .then(data => {
+        setSubscription(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [slug]);
+
+  const handleGeneratePix = async (months: number = 1) => {
+    setPixLoading(true);
+    try {
+      const res = await apiFetch('/subscription/generate-pix', {
+        method: 'POST',
+        body: JSON.stringify({ plan_id: 2, months })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPixData(data);
+      } else {
+        alert(data.error || 'Erro ao gerar PIX');
+      }
+    } catch (error) {
+      alert('Erro ao gerar PIX');
+    } finally {
+      setPixLoading(false);
+    }
+  };
+
+  const handleCopyPix = () => {
+    if (pixData?.pix_code) {
+      navigator.clipboard.writeText(pixData.pix_code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleSendWhatsApp = () => {
+    const message = `💰 *Comprovante de Pagamento - Mensalidade*\n\n` +
+      `📋 Pedido: #${pixData?.payment_id}\n` +
+      `🏪 Estabelecimento: ${subscription?.plan?.name || 'Premium'}\n` +
+      `💵 Valor: R$ ${pixData?.amount?.toFixed(2)}\n\n` +
+      `Segue em anexo o comprovante de pagamento.`;
+    
+    const whatsappUrl = `https://wa.me/5591980124904?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-400">
+        Carregando...
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-white pb-8">
+      {/* Header */}
+      <div className="bg-zinc-900 border-b border-zinc-800 p-4 sticky top-0 z-10">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
+          <button onClick={() => navigate(`/e/${slug}/admin`)} className="text-zinc-400 hover:text-white">
+            <ChevronRight className="w-6 h-6 rotate-180" />
+          </button>
+          <h1 className="font-black text-lg">Assinatura</h1>
+          <div className="w-6" />
+        </div>
+      </div>
+
+      <div className="max-w-lg mx-auto p-4 space-y-4">
+        {/* Status Atual */}
+        <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-orange-500 p-3 rounded-xl">
+              <CreditCard className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 uppercase font-bold">Plano Atual</p>
+              <p className="text-xl font-black">{subscription?.plan?.name || 'Gratuito'}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 pt-4 border-t border-zinc-800">
+            <div>
+              <p className="text-xs text-zinc-500">Status</p>
+              <p className={`font-bold ${subscription?.status === 'active' ? 'text-green-500' : 'text-yellow-500'}`}>
+                {subscription?.status === 'active' ? 'Ativo' : 'Pendente'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500">Válido até</p>
+              <p className="font-bold">
+                {subscription?.paid_until 
+                  ? new Date(subscription.paid_until).toLocaleDateString('pt-BR')
+                  : subscription?.trial_ends_at 
+                    ? new Date(subscription.trial_ends_at).toLocaleDateString('pt-BR')
+                    : 'N/A'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Pagamento Pendente */}
+        {subscription?.pending_payment && (
+          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-4">
+            <p className="text-yellow-500 font-bold text-sm">
+              ⚠️ Você tem um pagamento pendente de R$ {parseFloat(subscription.pending_payment.amount).toFixed(2)}
+            </p>
+          </div>
+        )}
+
+        {/* PIX Section */}
+        {pixData ? (
+          <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+            <div className="flex items-center gap-2 text-orange-500">
+              <QrCode className="w-5 h-5" />
+              <span className="font-bold uppercase text-sm">Pague com PIX</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl flex justify-center">
+              <QRCodeSVG value={pixData.pix_code} size={200} />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-500 text-center">Ou copie o código PIX:</p>
+              <div className="bg-zinc-800 p-3 rounded-xl">
+                <p className="text-xs text-zinc-400 break-all font-mono">{pixData.pix_code.substring(0, 50)}...</p>
+              </div>
+              <button
+                onClick={handleCopyPix}
+                className="w-full bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+              >
+                {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                {copied ? 'Copiado!' : 'Copiar Código PIX'}
+              </button>
+            </div>
+
+            <div className="pt-4 border-t border-zinc-800 space-y-3">
+              <button
+                onClick={handleSendWhatsApp}
+                className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Enviar Comprovante pelo WhatsApp
+              </button>
+              <p className="text-xs text-zinc-500 text-center">Envie o comprovante para confirmação mais rápida</p>
+            </div>
+          </div>
+        ) : (
+          /* Gerar PIX */
+          <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+            <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Pagar Mensalidade</h3>
+            
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-4 bg-zinc-800 rounded-xl">
+                <div>
+                  <p className="font-bold">Premium - 1 mês</p>
+                  <p className="text-xs text-zinc-500">R$ 49,90</p>
+                </div>
+                <button
+                  onClick={() => handleGeneratePix(1)}
+                  disabled={pixLoading}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-bold disabled:opacity-50 transition-colors"
+                >
+                  {pixLoading ? '...' : 'Pagar'}
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center p-4 bg-zinc-800 rounded-xl">
+                <div>
+                  <p className="font-bold">Premium - 3 meses</p>
+                  <p className="text-xs text-zinc-500">R$ 149,70 (economize R$ 15)</p>
+                </div>
+                <button
+                  onClick={() => handleGeneratePix(3)}
+                  disabled={pixLoading}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-bold disabled:opacity-50 transition-colors"
+                >
+                  {pixLoading ? '...' : 'Pagar'}
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center p-4 bg-zinc-800 rounded-xl">
+                <div>
+                  <p className="font-bold">Premium - 12 meses</p>
+                  <p className="text-xs text-zinc-500">R$ 499,00 (economize R$ 100)</p>
+                </div>
+                <button
+                  onClick={() => handleGeneratePix(12)}
+                  disabled={pixLoading}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-bold disabled:opacity-50 transition-colors"
+                >
+                  {pixLoading ? '...' : 'Pagar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Benefícios */}
+        <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+          <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Benefícios do Premium</h3>
+          <ul className="space-y-2 text-sm">
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              Até 100 produtos
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              Sistema de reservas
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              IA para insights
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              Suporte prioritário
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const EstablishmentApp = () => {
   const { slug } = useParams();
   const [establishment, setEstablishment] = useState<any>(null);
@@ -3976,6 +4230,7 @@ const EstablishmentApp = () => {
       <Route path="/pedido/:id" element={<OrderTracking slug={slug!} />} />
       <Route path="/meus-pedidos" element={<CustomerOrders slug={slug!} />} />
       <Route path="/admin" element={<AdminDashboard slug={slug!} />} />
+      <Route path="/admin/assinatura" element={<SubscriptionPage slug={slug!} />} />
     </Routes>
   );
 };
