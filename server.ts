@@ -233,7 +233,7 @@ async function initDatabase() {
     const estId = (est as any)[0].id;
 
     const settings = [
-      [estId, "pix_key", "seu-pix@email.com"],
+      [estId, "pix_key", "11999999999"],
       [estId, "whatsapp_kitchen", "5511999999999"],
       [estId, "whatsapp_cashier", "5511999999999"],
       [estId, "store_name", "MaisQueCardapio Demo"],
