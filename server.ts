@@ -625,10 +625,25 @@ app.post("/api/e/orders", async (req: any, res) => {
       pix_code, pix_qrcode, pix_expires_at, type, items_text, notes
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
-    req.establishment.id, customer_name, customer_phone, customer_email,
-    address, address_number, address_complement, address_reference,
-    neighborhood_id, total, delivery_fee || 0, payment_method, paymentStatus,
-    pixCode, pixQrcode, pixExpiresAt, type, items_text, notes
+    req.establishment.id, 
+    customer_name || null, 
+    customer_phone || null, 
+    customer_email || null,
+    address || null, 
+    address_number || null, 
+    address_complement || null, 
+    address_reference || null,
+    neighborhood_id || null, 
+    total, 
+    delivery_fee || 0, 
+    payment_method, 
+    paymentStatus,
+    pixCode || null, 
+    pixQrcode || null, 
+    pixExpiresAt || null, 
+    type || 'delivery', 
+    items_text || '', 
+    notes || null
   ]);
   
   const orderId = (result as any).insertId;
