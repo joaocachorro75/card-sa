@@ -303,14 +303,32 @@ app.post("/api/public/register", async (req, res) => {
   } catch (e) { res.status(400).json({ error: "Slug em uso" }); }
 });
 
-// Login com WhatsApp + senha
+// Login com WhatsApp + senha ou X-Establishment-Slug + senha
 app.post("/api/public/login", async (req, res) => {
   const { whatsapp, password } = req.body;
+  const slugHeader = req.headers["x-establishment-slug"] as string;
+  
   try {
-    const [rows] = await pool.execute("SELECT slug, password FROM establishments WHERE owner_whatsapp = ?", [whatsapp]);
+    let query: string;
+    let params: any[];
+    
+    if (slugHeader) {
+      // Login por slug (header)
+      query = "SELECT slug, password FROM establishments WHERE slug = ?";
+      params = [slugHeader];
+    } else if (whatsapp) {
+      // Login por whatsapp (body)
+      query = "SELECT slug, password FROM establishments WHERE owner_whatsapp = ?";
+      params = [whatsapp];
+    } else {
+      return res.status(400).json({ error: "Informe whatsapp no body ou X-Establishment-Slug no header" });
+    }
+    
+    const [rows] = await pool.execute(query, params);
     const est = (rows as any)[0];
+    
     if (!est) {
-      return res.status(401).json({ error: "WhatsApp não cadastrado" });
+      return res.status(401).json({ error: slugHeader ? "Slug não encontrado" : "WhatsApp não cadastrado" });
     }
     if (est.password !== password) {
       return res.status(401).json({ error: "Senha incorreta" });
