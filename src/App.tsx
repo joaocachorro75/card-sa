@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useParams, useSearchParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
@@ -32,9 +32,22 @@ import {
   User,
   Check,
   ShieldCheck,
-  Edit2
+  Edit2,
+  Copy,
+  CheckCircle,
+  XCircle,
+  Clock3,
+  Truck,
+  Home as HomeIcon,
+  RefreshCw,
+  Filter,
+  Search,
+  DollarSign,
+  TrendingUp,
+  Eye,
+  MessageCircle
 } from 'lucide-react';
-import { cn, Product, Category, Neighborhood, CartItem } from './types';
+import { cn, Product, Category, Neighborhood, CartItem, Order, OrderStatus, PaymentStatus, CustomerData, DashboardMetrics } from './types';
 import { GoogleGenAI } from "@google/genai";
 
 // --- AI Insights Component ---
@@ -337,6 +350,42 @@ const CustomerProfile = ({ customer, onClose }: { customer: any, onClose: () => 
   );
 };
 
+// --- Status Colors Helper ---
+const statusColors: Record<string, string> = {
+  'pendente': 'bg-yellow-500',
+  'aguardando_pagamento': 'bg-yellow-500',
+  'confirmado': 'bg-blue-500',
+  'em_preparo': 'bg-orange-500',
+  'saiu_para_entrega': 'bg-purple-500',
+  'entregue': 'bg-green-500',
+  'cancelado': 'bg-red-500',
+  // English versions for compatibility
+  'pending': 'bg-yellow-500',
+  'confirmed': 'bg-blue-500',
+  'preparing': 'bg-orange-500',
+  'delivering': 'bg-purple-500',
+  'completed': 'bg-green-500',
+  'cancelled': 'bg-red-500'
+};
+
+const statusLabels: Record<string, string> = {
+  'pendente': 'Pendente',
+  'aguardando_pagamento': 'Aguardando Pagamento',
+  'confirmado': 'Confirmado',
+  'em_preparo': 'Em Preparo',
+  'saiu_para_entrega': 'Saiu para Entrega',
+  'entregue': 'Entregue',
+  'cancelado': 'Cancelado',
+  // English versions for compatibility
+  'pending': 'Pendente',
+  'confirmed': 'Confirmado',
+  'preparing': 'Em Preparo',
+  'delivering': 'Saiu para Entrega',
+  'completed': 'Entregue',
+  'cancelled': 'Cancelado'
+};
+
+// --- OrderTracking Component ---
 const Navbar = ({ settings, slug, customer, onAuthClick, onLogout, onProfileClick }: { settings: any, slug?: string, customer?: any, onAuthClick?: () => void, onLogout?: () => void, onProfileClick?: () => void }) => (
   <nav className={cn(
     "sticky top-0 z-50 backdrop-blur-xl border-b px-4 py-3 flex justify-between items-center transition-all",
@@ -412,6 +461,7 @@ const FloatingCart = ({ count, total, onClick }: { count: number; total: number;
 // --- Pages ---
 
 const OnlineMenu = ({ slug }: { slug: string }) => {
+  const navigate = useNavigate();
   const [establishment, setEstablishment] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -430,6 +480,19 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
   const [customer, setCustomer] = useState<any>(null);
   const [searchParams] = useSearchParams();
   const tableNumber = searchParams.get('mesa');
+  
+  // Checkout form state
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutData, setCheckoutData] = useState({
+    customer_name: '',
+    customer_phone: '',
+    customer_email: '',
+    address: '',
+    address_number: '',
+    address_complement: '',
+    address_reference: ''
+  });
 
   const apiFetch = (url: string, options: any = {}) => {
     return fetch(`/api/e${url}`, {
@@ -488,8 +551,8 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
     }));
   };
 
-  const subtotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-  const deliveryFee = neighborhoods.find(n => n.id === selectedNeighborhood)?.delivery_fee || 0;
+  const subtotal = cart.reduce((acc, item) => acc + (parseFloat(String(item.price)) || 0) * item.quantity, 0);
+  const deliveryFee = parseFloat(String(neighborhoods.find(n => n.id === selectedNeighborhood)?.delivery_fee || 0));
   const total = subtotal + deliveryFee;
 
   const filteredProducts = products.filter(p => {
@@ -500,32 +563,31 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
   });
 
   const handleCheckout = async () => {
-    const neighborhoodName = neighborhoods.find(n => n.id === selectedNeighborhood)?.name;
-    const items_text = cart.map(item => `${item.quantity}x ${item.name} - R$ ${(item.price * item.quantity).toFixed(2)}`).join('\n');
+    // For delivery orders, open checkout modal
+    if (!tableNumber) {
+      setIsCheckoutModalOpen(true);
+      return;
+    }
     
-    const message = `*Novo Pedido ${tableNumber ? `(Mesa ${tableNumber})` : '(Delivery)'}*\n\n` +
-      `*Cliente:* ${customer ? customer.name : 'Cliente Web'}\n` +
-      `*Telefone:* ${customer ? customer.phone : 'N/A'}\n\n` +
-      items_text +
-      `\n\n${!tableNumber ? `*Bairro:* ${neighborhoodName}\n*Taxa:* R$ ${deliveryFee.toFixed(2)}\n` : ''}` +
-      `*Pagamento:* ${paymentMethod === 'pix' ? 'PIX' : 'Na Entrega'}\n` +
-      `*Total: R$ ${total.toFixed(2)}*`;
+    // For table orders, create directly
+    const items_text = cart.map(item => `${item.quantity}x ${item.name} - R$ ${((parseFloat(String(item.price)) || 0) * item.quantity).toFixed(2)}`).join('\n');
     
-    // Save order to DB
-    await apiFetch('/orders', {
-      method: 'POST',
-      body: JSON.stringify({
-        total,
-        payment_method: paymentMethod,
-        type: tableNumber ? 'table' : 'delivery',
-        neighborhood_id: selectedNeighborhood,
-        items_text: items_text,
-        customer_name: customer ? customer.name : (tableNumber ? `Mesa ${tableNumber}` : 'Cliente Web'),
-        customer_phone: customer ? customer.phone : null
-      })
-    });
-
-    if (tableNumber) {
+    try {
+      const res = await apiFetch('/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          total,
+          payment_method: paymentMethod,
+          type: 'table',
+          items_text: items_text,
+          customer_name: `Mesa ${tableNumber}`,
+          customer_phone: null
+        })
+      });
+      
+      const order = await res.json();
+      
+      // Create command for table
       const table = tables.find(t => t.number === parseInt(tableNumber));
       if (table) {
         await apiFetch('/commands', {
@@ -536,11 +598,59 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
           })
         });
       }
+      
+      // Clear cart and redirect
+      setCart([]);
+      navigate(`/e/${slug}/pedido/${order.id}`);
+    } catch (error) {
+      console.error('Erro ao criar pedido:', error);
+      alert('Erro ao finalizar pedido. Tente novamente.');
     }
+  };
 
-    const targetWhatsApp = tableNumber ? settings.whatsapp_kitchen : settings.whatsapp_cashier;
-    const whatsappUrl = `https://wa.me/${targetWhatsApp || '5511999999999'}?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
+  const handleConfirmCheckout = async () => {
+    if (!selectedNeighborhood) {
+      alert('Selecione o bairro para entrega');
+      return;
+    }
+    
+    setCheckoutLoading(true);
+    
+    const items_text = cart.map(item => `${item.quantity}x ${item.name} - R$ ${((parseFloat(String(item.price)) || 0) * item.quantity).toFixed(2)}`).join('\n');
+    
+    try {
+      const res = await apiFetch('/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer_name: checkoutData.customer_name,
+          customer_phone: checkoutData.customer_phone,
+          customer_email: checkoutData.customer_email,
+          address: checkoutData.address,
+          address_number: checkoutData.address_number,
+          address_complement: checkoutData.address_complement,
+          address_reference: checkoutData.address_reference,
+          neighborhood_id: selectedNeighborhood,
+          total,
+          delivery_fee: deliveryFee,
+          payment_method: paymentMethod,
+          items_text: items_text,
+          type: 'delivery'
+        })
+      });
+      
+      const order = await res.json();
+      
+      // Clear cart and redirect to tracking page
+      setCart([]);
+      setIsCheckoutModalOpen(false);
+      setIsCartOpen(false);
+      navigate(`/e/${slug}/pedido/${order.id}`);
+    } catch (error) {
+      console.error('Erro ao criar pedido:', error);
+      alert('Erro ao finalizar pedido. Tente novamente.');
+    } finally {
+      setCheckoutLoading(false);
+    }
   };
 
   return (
@@ -930,6 +1040,302 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
           </>
         )}
       </AnimatePresence>
+
+      {/* Checkout Modal */}
+      <AnimatePresence>
+        {isCheckoutModalOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCheckoutModalOpen(false)}
+              className="fixed inset-0 bg-black/60 z-[80] backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+            >
+              <div className={cn(
+                "w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl",
+                settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                  ? "bg-zinc-900 text-white" 
+                  : "bg-white text-zinc-900"
+              )}>
+                <div className="p-6 border-b border-zinc-800 flex justify-between items-center sticky top-0 bg-inherit z-10">
+                  <h2 className="text-xl font-black uppercase tracking-tighter flex items-center gap-2">
+                    <ShoppingCart className="w-5 h-5" /> Finalizar Pedido
+                  </h2>
+                  <button onClick={() => setIsCheckoutModalOpen(false)} className="p-2 hover:bg-zinc-100/10 rounded-full">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!selectedNeighborhood) {
+                    alert('Selecione o bairro para entrega');
+                    return;
+                  }
+                  if (!checkoutData.customer_name || !checkoutData.customer_phone) {
+                    alert('Preencha nome e telefone');
+                    return;
+                  }
+                  
+                  setCheckoutLoading(true);
+                  
+                  const items_text = cart.map(item => 
+                    `${item.quantity}x ${item.name} - R$ ${((parseFloat(String(item.price)) || 0) * item.quantity).toFixed(2)}`
+                  ).join('\n');
+                  
+                  try {
+                    const res = await apiFetch('/orders', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        customer_name: checkoutData.customer_name,
+                        customer_phone: checkoutData.customer_phone.replace(/\D/g, ''),
+                        customer_email: checkoutData.customer_email,
+                        address: checkoutData.address,
+                        address_number: checkoutData.address_number,
+                        address_complement: checkoutData.address_complement,
+                        address_reference: checkoutData.address_reference,
+                        neighborhood_id: selectedNeighborhood,
+                        total,
+                        delivery_fee: deliveryFee,
+                        payment_method: paymentMethod,
+                        items_text: items_text,
+                        type: 'delivery'
+                      })
+                    });
+                    
+                    const order = await res.json();
+                    
+                    setCart([]);
+                    setIsCheckoutModalOpen(false);
+                    navigate(`/e/${slug}/pedido/${order.id}`);
+                  } catch (error) {
+                    console.error('Erro ao criar pedido:', error);
+                    alert('Erro ao finalizar pedido. Tente novamente.');
+                  } finally {
+                    setCheckoutLoading(false);
+                  }
+                }} className="p-6 space-y-6">
+                  {/* Dados Pessoais */}
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest flex items-center gap-2">
+                      <User className="w-4 h-4" /> Seus Dados
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Nome completo *</label>
+                        <input
+                          required
+                          value={checkoutData.customer_name}
+                          onChange={e => setCheckoutData({...checkoutData, customer_name: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="Seu nome"
+                        />
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">WhatsApp *</label>
+                        <input
+                          required
+                          type="tel"
+                          value={checkoutData.customer_phone}
+                          onChange={e => setCheckoutData({...checkoutData, customer_phone: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="(00) 00000-0000"
+                        />
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">E-mail</label>
+                        <input
+                          type="email"
+                          value={checkoutData.customer_email}
+                          onChange={e => setCheckoutData({...checkoutData, customer_email: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="email@exemplo.com"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Endereço de Entrega */}
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest flex items-center gap-2">
+                      <MapPin className="w-4 h-4" /> Endereço de Entrega
+                    </h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="col-span-3 sm:col-span-2">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Rua/Avenida</label>
+                        <input
+                          value={checkoutData.address}
+                          onChange={e => setCheckoutData({...checkoutData, address: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="Nome da rua"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Número</label>
+                        <input
+                          value={checkoutData.address_number}
+                          onChange={e => setCheckoutData({...checkoutData, address_number: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="123"
+                        />
+                      </div>
+                      <div className="col-span-3 sm:col-span-1">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Complemento</label>
+                        <input
+                          value={checkoutData.address_complement}
+                          onChange={e => setCheckoutData({...checkoutData, address_complement: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="Apto, Bloco..."
+                        />
+                      </div>
+                      <div className="col-span-3 sm:col-span-2">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Ponto de Referência</label>
+                        <input
+                          value={checkoutData.address_reference}
+                          onChange={e => setCheckoutData({...checkoutData, address_reference: e.target.value})}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                          placeholder="Próximo ao..."
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1 tracking-widest">Bairro *</label>
+                        <select
+                          required
+                          value={selectedNeighborhood || ''}
+                          onChange={e => setSelectedNeighborhood(parseInt(e.target.value))}
+                          className={cn(
+                            "w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-orange-500 font-bold text-sm",
+                            settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700" 
+                              : "bg-zinc-50 border-zinc-200"
+                          )}
+                        >
+                          <option value="">Selecione o bairro</option>
+                          {neighborhoods.map(n => (
+                            <option key={n.id} value={n.id}>{n.name} - R$ {(parseFloat(n.delivery_fee) || 0).toFixed(2)}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Pagamento */}
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest flex items-center gap-2">
+                      <CreditCard className="w-4 h-4" /> Forma de Pagamento
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('pix')}
+                        className={cn(
+                          "p-4 rounded-xl border font-bold text-sm uppercase tracking-widest transition-all flex flex-col items-center gap-2",
+                          paymentMethod === 'pix' 
+                            ? "bg-orange-500 text-white border-orange-500" 
+                            : settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600" 
+                              : "bg-zinc-50 border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                        )}
+                      >
+                        <QrCode className="w-6 h-6" />
+                        PIX
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('entrega')}
+                        className={cn(
+                          "p-4 rounded-xl border font-bold text-sm uppercase tracking-widest transition-all flex flex-col items-center gap-2",
+                          paymentMethod === 'entrega' 
+                            ? "bg-orange-500 text-white border-orange-500" 
+                            : settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' 
+                              ? "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600" 
+                              : "bg-zinc-50 border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                        )}
+                      >
+                        <CreditCard className="w-6 h-6" />
+                        Na Entrega
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Resumo do Pedido */}
+                  <div className="space-y-3 p-4 rounded-2xl bg-zinc-800/50 border border-zinc-700">
+                    <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Resumo do Pedido</h3>
+                    <div className="text-xs text-zinc-400 whitespace-pre-wrap">
+                      {cart.map(item => `${item.quantity}x ${item.name}`).join('\n')}
+                    </div>
+                    <div className="space-y-2 pt-3 border-t border-zinc-700">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Subtotal</span>
+                        <span>R$ {subtotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Taxa de Entrega</span>
+                        <span>R$ {deliveryFee.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-xl font-black pt-2 border-t border-zinc-600">
+                        <span>Total</span>
+                        <span className="text-orange-500">R$ {total.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Botão Confirmar */}
+                  <button
+                    type="submit"
+                    disabled={checkoutLoading || !selectedNeighborhood}
+                    className="w-full bg-orange-500 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {checkoutLoading ? 'Processando...' : 'Confirmar Pedido'}
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -997,11 +1403,211 @@ const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
   );
 };
 
+// --- Subscription Tab Component ---
+const SubscriptionTab = ({ apiFetch, settings }: { apiFetch: any, settings: any }) => {
+  const [subscription, setSubscription] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [generatingPix, setGeneratingPix] = useState(false);
+  const [pixData, setPixData] = useState<any>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetchSubscription();
+  }, []);
+
+  const fetchSubscription = async () => {
+    try {
+      const res = await apiFetch('/subscription/status');
+      const data = await res.json();
+      setSubscription(data);
+    } catch (error) {
+      console.error('Erro ao buscar assinatura:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGeneratePix = async () => {
+    setGeneratingPix(true);
+    try {
+      const res = await apiFetch('/subscription/generate-pix', {
+        method: 'POST',
+        body: JSON.stringify({ plan_id: 2, months: 1 })
+      });
+      const data = await res.json();
+      setPixData(data);
+    } catch (error) {
+      console.error('Erro ao gerar PIX:', error);
+      alert('Erro ao gerar PIX. Tente novamente.');
+    } finally {
+      setGeneratingPix(false);
+    }
+  };
+
+  const handleCopyPix = () => {
+    if (pixData?.pix_code) {
+      navigator.clipboard.writeText(pixData.pix_code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleSendWhatsApp = () => {
+    const adminPhone = settings.whatsapp_cashier || '5511999999999';
+    const message = `💰 *Comprovante de Pagamento - Mensalidade*\n\n📋 Plano: ${pixData?.plan_name || 'Premium'}\n💵 Valor: R$ ${pixData?.amount?.toFixed(2) || '49.90'}\n📅 Referente a: ${pixData?.months || 1} mês(es)\n\nSeguem anexos o comprovante de pagamento.`;
+    const whatsappUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-8">
+        <p className="text-zinc-500">Carregando assinatura...</p>
+      </div>
+    );
+  }
+
+  const isPremium = subscription?.plan?.id === 2;
+  const paidUntil = subscription?.paid_until ? new Date(subscription.paid_until) : null;
+  const isExpired = paidUntil && paidUntil < new Date();
+
+  return (
+    <div className="space-y-6">
+      {/* Status da Assinatura */}
+      <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-zinc-900">Sua Assinatura</h2>
+            <p className="text-zinc-500 text-sm">Gerencie seu plano e pagamentos</p>
+          </div>
+          <div className={`px-4 py-2 rounded-full font-bold text-sm ${isPremium ? 'bg-purple-100 text-purple-700' : 'bg-zinc-100 text-zinc-600'}`}>
+            {subscription?.plan?.name || 'Gratuito'}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-zinc-50 rounded-xl p-4">
+            <p className="text-xs text-zinc-500 uppercase font-bold mb-1">Plano Atual</p>
+            <p className="text-xl font-bold text-zinc-900">{subscription?.plan?.name || 'Gratuito'}</p>
+          </div>
+          <div className="bg-zinc-50 rounded-xl p-4">
+            <p className="text-xs text-zinc-500 uppercase font-bold mb-1">Status</p>
+            <p className={`text-xl font-bold ${isExpired ? 'text-red-500' : 'text-green-500'}`}>
+              {isExpired ? 'Expirado' : subscription?.status || 'Ativo'}
+            </p>
+          </div>
+          <div className="bg-zinc-50 rounded-xl p-4">
+            <p className="text-xs text-zinc-500 uppercase font-bold mb-1">Válido Até</p>
+            <p className="text-xl font-bold text-zinc-900">
+              {paidUntil ? paidUntil.toLocaleDateString('pt-BR') : 'N/A'}
+            </p>
+          </div>
+        </div>
+
+        {/* Features */}
+        <div className="mt-6 p-4 bg-zinc-50 rounded-xl">
+          <p className="text-xs text-zinc-500 uppercase font-bold mb-3">Recursos do Plano</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="flex items-center gap-2">
+              <span className={subscription?.plan?.maxProducts >= 100 ? 'text-green-500' : 'text-zinc-400'}>✓</span>
+              <span className="text-sm">{subscription?.plan?.maxProducts || 10} produtos</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={subscription?.plan?.features?.ai ? 'text-green-500' : 'text-zinc-400'}>✓</span>
+              <span className="text-sm">IA Insights</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={subscription?.plan?.features?.reservations ? 'text-green-500' : 'text-zinc-400'}>✓</span>
+              <span className="text-sm">Reservas</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-green-500">✓</span>
+              <span className="text-sm">Suporte</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Pagamento da Mensalidade */}
+      {!isPremium || isExpired ? (
+        <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <CreditCard className="w-6 h-6 text-orange-500" />
+            <h3 className="text-xl font-bold text-zinc-900">Pagar Mensalidade</h3>
+          </div>
+
+          {!pixData ? (
+            <div className="text-center py-8">
+              <p className="text-zinc-600 mb-4">Clique no botão abaixo para gerar o QR Code PIX</p>
+              <button
+                onClick={handleGeneratePix}
+                disabled={generatingPix}
+                className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 transition-colors"
+              >
+                {generatingPix ? 'Gerando PIX...' : 'Gerar PIX - R$ 49,90'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* QR Code */}
+              <div className="flex justify-center">
+                <div className="bg-white p-4 rounded-xl border border-zinc-200">
+                  <QRCodeSVG value={pixData.pix_code} size={200} />
+                </div>
+              </div>
+
+              {/* Copiar código */}
+              <div className="space-y-2">
+                <p className="text-xs text-zinc-500 text-center">Ou copie o código PIX:</p>
+                <div className="bg-zinc-100 p-3 rounded-xl">
+                  <p className="text-xs text-zinc-600 break-all font-mono text-center">{pixData.pix_code.substring(0, 50)}...</p>
+                </div>
+                <button
+                  onClick={handleCopyPix}
+                  className="w-full bg-zinc-100 hover:bg-zinc-200 text-zinc-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                >
+                  {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                  {copied ? 'Copiado!' : 'Copiar Código PIX'}
+                </button>
+              </div>
+
+              {/* Enviar Comprovante */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-zinc-200" />
+                <span className="text-xs text-zinc-500">após pagar</span>
+                <div className="flex-1 h-px bg-zinc-200" />
+              </div>
+
+              <button
+                onClick={handleSendWhatsApp}
+                className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-xl font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Enviar Comprovante pelo WhatsApp
+              </button>
+
+              <p className="text-xs text-zinc-500 text-center">
+                Após enviar o comprovante, aguarde a confirmação do administrador.
+              </p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-8 text-center">
+          <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-green-800 mb-2">Assinatura Ativa!</h3>
+          <p className="text-green-600">Sua assinatura Premium está ativa até {paidUntil?.toLocaleDateString('pt-BR')}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AdminDashboard = ({ slug }: { slug: string }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
-  const [activeTab, setActiveTab] = useState<'products' | 'tables' | 'delivery' | 'categories' | 'orders' | 'commands' | 'reservations' | 'ai' | 'help' | 'settings'>('orders');
+  const [activeTab, setActiveTab] = useState<'products' | 'tables' | 'delivery' | 'categories' | 'orders' | 'commands' | 'reservations' | 'ai' | 'help' | 'settings' | 'subscription'>('orders');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [tables, setTables] = useState<{id: number, number: number}[]>([]);
   const [commands, setCommands] = useState<any[]>([]);
@@ -1067,7 +1673,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
           </div>
           <div class="total">
             <span>TOTAL:</span>
-            <span>R$ ${order.total.toFixed(2)}</span>
+            <span>R$ ${(parseFloat(order.total) || 0).toFixed(2)}</span>
           </div>
           <p><strong>Pagamento:</strong> ${order.payment_method.toUpperCase()}</p>
           <div class="footer">
@@ -1249,6 +1855,13 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             <p className="text-zinc-500 font-bold uppercase text-xs tracking-widest mt-1">Gerencie seu cardápio e pedidos</p>
           </div>
           <div className="flex items-center gap-4 w-full md:w-auto">
+            <Link
+              to={`/e/${slug}/admin/assinatura`}
+              className="flex-1 md:flex-none px-6 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl bg-purple-500/10 text-purple-500 border border-purple-500/20 shadow-purple-500/5 hover:bg-purple-500/20"
+            >
+              <CreditCard className="w-5 h-5" />
+              Assinatura
+            </Link>
             <button 
               onClick={async () => {
                 const newStatus = settings.is_open === "1" ? "0" : "1";
@@ -1306,6 +1919,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             { id: 'categories', label: 'Categorias', icon: LayoutDashboard },
             { id: 'delivery', label: 'Delivery', icon: Bike },
             { id: 'tables', label: 'Mesas', icon: QrCode },
+            { id: 'subscription', label: 'Assinatura', icon: CreditCard },
             { id: 'ai', label: 'IA Insights', icon: Sparkles },
             { id: 'settings', label: 'Configurações', icon: Settings }
           ].map(tab => {
@@ -1971,6 +2585,10 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
           </div>
         )}
 
+        {activeTab === 'subscription' && (
+          <SubscriptionTab apiFetch={apiFetch} settings={settings} />
+        )}
+
         {activeTab === 'help' && (
           <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm p-8 max-w-4xl mx-auto">
             <h2 className="text-2xl font-bold text-zinc-900 mb-6 flex items-center gap-2">
@@ -2601,10 +3219,68 @@ const SuperAdmin = () => {
     plan_id: '',
     status: 'active'
   });
-  const [estForm, setEstForm] = useState({
-    plan_id: '',
-    status: ''
-  });
+  const [payments, setPayments] = useState<any[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+
+  const fetchPayments = async (token: string) => {
+    setPaymentsLoading(true);
+    try {
+      const res = await window.fetch('/api/superadmin/payments?status=pending', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setPayments(data);
+    } catch (err) {
+      console.error('Erro ao buscar pagamentos:', err);
+    } finally {
+      setPaymentsLoading(false);
+    }
+  };
+
+  const handleConfirmPayment = async (paymentId: number) => {
+    if (!confirm('Confirmar este pagamento?')) return;
+    try {
+      const res = await window.fetch(`/api/superadmin/payments/${paymentId}/confirm`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Pagamento confirmado!');
+        fetchPayments(authToken);
+        fetchData(authToken);
+      } else {
+        alert(data.error || 'Erro ao confirmar pagamento');
+      }
+    } catch (err) {
+      alert('Erro ao confirmar pagamento');
+    }
+  };
+
+  const handleRejectPayment = async (paymentId: number) => {
+    if (!confirm('Rejeitar este pagamento?')) return;
+    try {
+      const res = await window.fetch(`/api/superadmin/payments/${paymentId}/reject`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Pagamento rejeitado!');
+        fetchPayments(authToken);
+      } else {
+        alert(data.error || 'Erro ao rejeitar pagamento');
+      }
+    } catch (err) {
+      alert('Erro ao rejeitar pagamento');
+    }
+  };
 
   const fetchData = async (token: string) => {
     setLoading(true);
@@ -2639,6 +3315,7 @@ const SuperAdmin = () => {
   useEffect(() => {
     if (isSuperLoggedIn && authToken) {
       fetchData(authToken);
+      fetchPayments(authToken);
     }
   }, [isSuperLoggedIn, authToken]);
 
@@ -2844,7 +3521,7 @@ const SuperAdmin = () => {
       </nav>
 
       <main className="max-w-7xl mx-auto p-6 space-y-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-brand-surface p-6 rounded-3xl border border-zinc-800">
             <p className="text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Total Lojas</p>
             <p className="text-4xl font-black">{establishments.length}</p>
@@ -2853,7 +3530,59 @@ const SuperAdmin = () => {
             <p className="text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Planos Ativos</p>
             <p className="text-4xl font-black">{plans.length}</p>
           </div>
+          <div className="bg-brand-surface p-6 rounded-3xl border border-zinc-800">
+            <p className="text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Pagamentos Pendentes</p>
+            <p className="text-4xl font-black text-orange-500">{payments.length}</p>
+          </div>
         </div>
+
+        {/* Pagamentos Pendentes */}
+        {payments.length > 0 && (
+          <section>
+            <h2 className="text-3xl font-black uppercase tracking-tighter mb-8 flex items-center gap-3">
+              <DollarSign className="text-orange-500" /> Pagamentos Pendentes
+            </h2>
+            <div className="bg-brand-surface rounded-[32px] border border-zinc-800 overflow-hidden">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-zinc-500 text-[10px] font-black uppercase tracking-widest border-b border-zinc-800">
+                    <th className="px-6 py-4">ID</th>
+                    <th className="px-6 py-4">Estabelecimento</th>
+                    <th className="px-6 py-4">Valor</th>
+                    <th className="px-6 py-4">Data</th>
+                    <th className="px-6 py-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {payments.map(pay => (
+                    <tr key={pay.id} className="hover:bg-zinc-900/50 transition-colors">
+                      <td className="px-6 py-4 font-bold">#{pay.id}</td>
+                      <td className="px-6 py-4">{establishments.find(e => e.id === pay.establishment_id)?.name || `ID: ${pay.establishment_id}`}</td>
+                      <td className="px-6 py-4 text-orange-500 font-bold">R$ {parseFloat(pay.amount).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-zinc-500">{new Date(pay.created_at).toLocaleDateString('pt-BR')}</td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex gap-2 justify-end">
+                          <button 
+                            onClick={() => handleConfirmPayment(pay.id)}
+                            className="px-4 py-2 bg-green-500/10 text-green-500 rounded-xl font-bold text-xs hover:bg-green-500/20 transition-colors"
+                          >
+                            Confirmar
+                          </button>
+                          <button 
+                            onClick={() => handleRejectPayment(pay.id)}
+                            className="px-4 py-2 bg-red-500/10 text-red-500 rounded-xl font-bold text-xs hover:bg-red-500/20 transition-colors"
+                          >
+                            Rejeitar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         <section>
           <div className="flex justify-between items-center mb-8">
@@ -3098,6 +3827,703 @@ const SuperAdmin = () => {
   );
 };
 
+// --- Order Tracking Component ---
+const OrderTracking = ({ slug }: { slug: string }) => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [order, setOrder] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [proofImage, setProofImage] = useState<string | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
+
+  const apiFetch = (url: string, options: any = {}) => {
+    return fetch(`/api/public${url}`, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'x-establishment-slug': slug,
+        'Content-Type': 'application/json'
+      }
+    });
+  };
+
+  const fetchOrder = async () => {
+    try {
+      const res = await apiFetch(`/orders/id/${id}`);
+      const data = await res.json();
+      setOrder(data);
+    } catch (error) {
+      console.error('Erro ao buscar pedido:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrder();
+    const interval = setInterval(fetchOrder, 30000); // Atualiza a cada 30s
+    return () => clearInterval(interval);
+  }, [id]);
+
+  const handleCopyPix = () => {
+    if (order?.pix_code) {
+      navigator.clipboard.writeText(order.pix_code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Validar tipo
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, envie uma imagem');
+      return;
+    }
+    
+    // Validar tamanho (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Imagem muito grande. Máximo 5MB');
+      return;
+    }
+    
+    // Criar preview
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setProofPreview(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+    
+    // Converter para base64
+    const reader2 = new FileReader();
+    reader2.onload = (event) => {
+      setProofImage(event.target?.result as string);
+    };
+    reader2.readAsDataURL(file);
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!proofImage && !confirm('Tem certeza que deseja confirmar sem enviar comprovante?')) {
+      return;
+    }
+    
+    setConfirming(true);
+    try {
+      const res = await apiFetch(`/orders/${id}/confirm-payment`, { 
+        method: 'POST',
+        body: JSON.stringify({ proof_image: proofImage })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchOrder();
+        alert('Comprovante enviado! Aguarde a confirmação do estabelecimento.');
+        setProofImage(null);
+        setProofPreview(null);
+      } else {
+        alert(data.error || 'Erro ao confirmar pagamento');
+      }
+    } catch (error) {
+      alert('Erro ao confirmar pagamento');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
+    'pending': { label: 'Pendente', color: 'bg-yellow-500', icon: Clock3 },
+    'confirmed': { label: 'Confirmado', color: 'bg-blue-500', icon: CheckCircle },
+    'preparing': { label: 'Em Preparo', color: 'bg-orange-500', icon: ChefHat },
+    'delivering': { label: 'Saiu para Entrega', color: 'bg-purple-500', icon: Truck },
+    'completed': { label: 'Entregue', color: 'bg-green-500', icon: CheckCircle },
+    'cancelled': { label: 'Cancelado', color: 'bg-red-500', icon: XCircle }
+  };
+
+  const paymentStatusConfig: Record<string, { label: string; color: string }> = {
+    'pending': { label: 'Aguardando', color: 'text-yellow-500' },
+    'aguardando_pagamento': { label: 'Aguardando PIX', color: 'text-yellow-500' },
+    'pagamento_em_analise': { label: 'Pagamento em Análise', color: 'text-blue-500' },
+    'pago': { label: 'Pago', color: 'text-green-500' },
+    'pagamento_rejeitado': { label: 'Pagamento Rejeitado', color: 'text-red-500' },
+    'pending_delivery': { label: 'Na Entrega', color: 'text-purple-500' }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="text-zinc-400">Carregando pedido...</div>
+      </div>
+    );
+  }
+
+  if (!order) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-4">
+        <XCircle className="w-16 h-16 text-red-500" />
+        <div className="text-zinc-400">Pedido não encontrado</div>
+        <button onClick={() => navigate(`/e/${slug}`)} className="text-orange-500 font-bold">Voltar ao cardápio</button>
+      </div>
+    );
+  }
+
+  const currentStatus = statusConfig[order.status] || statusConfig['pending'];
+  const currentPaymentStatus = paymentStatusConfig[order.payment_status] || paymentStatusConfig['pending'];
+  const showPixPayment = order.payment_method === 'pix' && (order.payment_status === 'pending' || order.payment_status === 'aguardando_pagamento');
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-white pb-8">
+      {/* Header */}
+      <div className="bg-zinc-900 border-b border-zinc-800 p-4 sticky top-0 z-10">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
+          <button onClick={() => navigate(`/e/${slug}`)} className="text-zinc-400 hover:text-white">
+            <ChevronRight className="w-6 h-6 rotate-180" />
+          </button>
+          <h1 className="font-black text-lg">Pedido #{order.id}</h1>
+          <button onClick={fetchOrder} className="text-zinc-400 hover:text-white">
+            <RefreshCw className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-lg mx-auto p-4 space-y-4">
+        {/* Status Principal */}
+        <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800">
+          <div className="flex items-center gap-4 mb-4">
+            <div className={`${currentStatus.color} p-4 rounded-2xl`}>
+              <currentStatus.icon className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 uppercase font-bold">Status</p>
+              <p className="text-xl font-black">{currentStatus.label}</p>
+            </div>
+          </div>
+
+          {/* Payment Status */}
+          <div className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+            <span className="text-sm text-zinc-400">Pagamento</span>
+            <span className={`font-bold ${currentPaymentStatus.color}`}>{currentPaymentStatus.label}</span>
+          </div>
+        </div>
+
+        {/* PIX Payment Section */}
+        {showPixPayment && (
+          <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+            <div className="flex items-center gap-2 text-orange-500">
+              <QrCode className="w-5 h-5" />
+              <span className="font-bold uppercase text-sm">Pague com PIX</span>
+            </div>
+
+            {order.pix_qrcode && (
+              <div className="bg-white p-4 rounded-xl flex justify-center">
+                <QRCodeSVG value={order.pix_code} size={200} />
+              </div>
+            )}
+
+            {order.pix_code && (
+              <div className="space-y-2">
+                <p className="text-xs text-zinc-500 text-center">Ou copie o código PIX:</p>
+                <div className="bg-zinc-800 p-3 rounded-xl">
+                  <p className="text-xs text-zinc-400 break-all font-mono">{order.pix_code.substring(0, 50)}...</p>
+                </div>
+                <button
+                  onClick={handleCopyPix}
+                  className="w-full bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                >
+                  {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                  {copied ? 'Copiado!' : 'Copiar Código PIX'}
+                </button>
+              </div>
+            )}
+
+            <div className="pt-4 border-t border-zinc-800 space-y-3">
+              {/* Botão Enviar Comprovante pelo WhatsApp */}
+              <button
+                onClick={() => {
+                  const adminPhone = order.admin_whatsapp || '5511999999999';
+                  const message = `📸 *Comprovante de Pagamento*\n\nPedido #${order.id}\nValor: R$ ${parseFloat(order.total).toFixed(2)}\n\nEnvie a imagem do comprovante PIX abaixo:`;
+                  const whatsappUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(message)}`;
+                  window.open(whatsappUrl, '_blank');
+                }}
+                className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Enviar Comprovante pelo WhatsApp
+              </button>
+              
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-zinc-700" />
+                <span className="text-xs text-zinc-500">ou</span>
+                <div className="flex-1 h-px bg-zinc-700" />
+              </div>
+              
+              <button
+                onClick={handleConfirmPayment}
+                disabled={confirming}
+                className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-4 rounded-xl font-black uppercase tracking-wider disabled:opacity-50 transition-colors"
+              >
+                {confirming ? 'Confirmando...' : 'Já paguei!'}
+              </button>
+              <p className="text-xs text-zinc-500 text-center">Envie o comprovante pelo WhatsApp para confirmação mais rápida</p>
+            </div>
+          </div>
+        )}
+
+        {/* Order Details */}
+        <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+          <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Detalhes do Pedido</h3>
+          
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Cliente</span>
+              <span>{order.customer_name}</span>
+            </div>
+            {order.customer_phone && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Telefone</span>
+                <span>{order.customer_phone}</span>
+              </div>
+            )}
+            {order.address && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Endereço</span>
+                <span className="text-right">{order.address}{order.address_number ? `, ${order.address_number}` : ''}</span>
+              </div>
+            )}
+            {order.neighborhood_name && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Bairro</span>
+                <span>{order.neighborhood_name}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-zinc-800 pt-4">
+            <p className="text-xs text-zinc-500 uppercase font-bold mb-2">Itens</p>
+            <div className="whitespace-pre-wrap text-sm bg-zinc-800/50 p-3 rounded-xl">{order.items_text}</div>
+          </div>
+
+          <div className="border-t border-zinc-800 pt-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-zinc-500">Subtotal</span>
+              <span>R$ {(parseFloat(order.total) - parseFloat(order.delivery_fee || 0)).toFixed(2)}</span>
+            </div>
+            {parseFloat(order.delivery_fee || 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">Taxa de Entrega</span>
+                <span>R$ {parseFloat(order.delivery_fee).toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-xl font-black pt-2">
+              <span>Total</span>
+              <span className="text-orange-500">R$ {parseFloat(order.total).toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* History */}
+        {order.history && order.history.length > 0 && (
+          <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+            <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Histórico</h3>
+            <div className="space-y-3">
+              {order.history.map((h: any, i: number) => (
+                <div key={i} className="flex items-start gap-3">
+                  <div className={`w-2 h-2 rounded-full mt-1.5 ${i === 0 ? 'bg-orange-500' : 'bg-zinc-600'}`} />
+                  <div>
+                    <p className="text-sm">{h.status}</p>
+                    <p className="text-xs text-zinc-500">
+                      {new Date(h.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Help */}
+        <div className="text-center">
+          <p className="text-xs text-zinc-500">Dúvidas? Entre em contato pelo WhatsApp</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Customer Orders Component ---
+const CustomerOrders = ({ slug }: { slug: string }) => {
+  const navigate = useNavigate();
+  const [phone, setPhone] = useState('');
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+
+  const apiFetch = (url: string, options: any = {}) => {
+    return fetch(`/api/public${url}`, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'x-establishment-slug': slug,
+        'Content-Type': 'application/json'
+      }
+    });
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phone) return;
+
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/orders/${phone.replace(/\D/g, '')}`);
+      const data = await res.json();
+      setOrders(Array.isArray(data) ? data : []);
+      setSearched(true);
+    } catch (error) {
+      console.error('Erro ao buscar pedidos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statusConfig: Record<string, { label: string; color: string }> = {
+    'pending': { label: 'Pendente', color: 'bg-yellow-500' },
+    'confirmed': { label: 'Confirmado', color: 'bg-blue-500' },
+    'preparing': { label: 'Em Preparo', color: 'bg-orange-500' },
+    'delivering': { label: 'Saiu para Entrega', color: 'bg-purple-500' },
+    'completed': { label: 'Entregue', color: 'bg-green-500' },
+    'cancelled': { label: 'Cancelado', color: 'bg-red-500' }
+  };
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-white pb-8">
+      {/* Header */}
+      <div className="bg-zinc-900 border-b border-zinc-800 p-4 sticky top-0 z-10">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
+          <button onClick={() => navigate(`/e/${slug}`)} className="text-zinc-400 hover:text-white">
+            <ChevronRight className="w-6 h-6 rotate-180" />
+          </button>
+          <h1 className="font-black text-lg">Meus Pedidos</h1>
+          <div className="w-6" />
+        </div>
+      </div>
+
+      <div className="max-w-lg mx-auto p-4 space-y-4">
+        {/* Search Form */}
+        <form onSubmit={handleSearch} className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+          <div className="flex items-center gap-2 text-zinc-400">
+            <Package className="w-5 h-5" />
+            <span className="font-bold uppercase text-sm">Consultar Pedidos</span>
+          </div>
+          <p className="text-xs text-zinc-500">Digite seu telefone para ver seus pedidos</p>
+          <div className="flex gap-2">
+            <input
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="Seu telefone"
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500"
+            />
+            <button
+              type="submit"
+              disabled={loading || !phone}
+              className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold disabled:opacity-50 transition-colors"
+            >
+              {loading ? '...' : 'Buscar'}
+            </button>
+          </div>
+        </form>
+
+        {/* Orders List */}
+        {searched && (
+          <div className="space-y-3">
+            {orders.length === 0 ? (
+              <div className="text-center py-8">
+                <Package className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+                <p className="text-zinc-400">Nenhum pedido encontrado para este telefone</p>
+              </div>
+            ) : (
+              orders.map(order => {
+                const status = statusConfig[order.status] || statusConfig['pending'];
+                return (
+                  <button
+                    key={order.id}
+                    onClick={() => navigate(`/e/${slug}/pedido/${order.id}`)}
+                    className="w-full bg-zinc-900 rounded-2xl p-4 border border-zinc-800 text-left hover:border-zinc-700 transition-colors"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-bold">Pedido #{order.id}</p>
+                        <p className="text-xs text-zinc-500">
+                          {new Date(order.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <span className={`${status.color} text-white text-xs px-2 py-1 rounded-full font-bold`}>
+                        {status.label}
+                      </span>
+                    </div>
+                    <div className="text-xs text-zinc-400 line-clamp-2 mb-2">{order.items_text}</div>
+                    <p className="text-orange-500 font-bold">R$ {parseFloat(order.total).toFixed(2)}</p>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- Subscription Page Component ---
+const SubscriptionPage = ({ slug }: { slug: string }) => {
+  const navigate = useNavigate();
+  const [subscription, setSubscription] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [pixLoading, setPixLoading] = useState(false);
+  const [pixData, setPixData] = useState<any>(null);
+  const [copied, setCopied] = useState(false);
+
+  const apiFetch = (url: string, options: any = {}) => {
+    return fetch(`/api/e${url}`, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'x-establishment-slug': slug,
+        'Content-Type': 'application/json'
+      }
+    });
+  };
+
+  useEffect(() => {
+    apiFetch('/subscription/status')
+      .then(res => res.json())
+      .then(data => {
+        setSubscription(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [slug]);
+
+  const handleGeneratePix = async (months: number = 1) => {
+    setPixLoading(true);
+    try {
+      const res = await apiFetch('/subscription/generate-pix', {
+        method: 'POST',
+        body: JSON.stringify({ plan_id: 2, months })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPixData(data);
+      } else {
+        alert(data.error || 'Erro ao gerar PIX');
+      }
+    } catch (error) {
+      alert('Erro ao gerar PIX');
+    } finally {
+      setPixLoading(false);
+    }
+  };
+
+  const handleCopyPix = () => {
+    if (pixData?.pix_code) {
+      navigator.clipboard.writeText(pixData.pix_code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleSendWhatsApp = () => {
+    const message = `💰 *Comprovante de Pagamento - Mensalidade*\n\n` +
+      `📋 Pedido: #${pixData?.payment_id}\n` +
+      `🏪 Estabelecimento: ${subscription?.plan?.name || 'Premium'}\n` +
+      `💵 Valor: R$ ${pixData?.amount?.toFixed(2)}\n\n` +
+      `Segue em anexo o comprovante de pagamento.`;
+    
+    const whatsappUrl = `https://wa.me/5591980124904?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-400">
+        Carregando...
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-white pb-8">
+      {/* Header */}
+      <div className="bg-zinc-900 border-b border-zinc-800 p-4 sticky top-0 z-10">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
+          <button onClick={() => navigate(`/e/${slug}/admin`)} className="text-zinc-400 hover:text-white">
+            <ChevronRight className="w-6 h-6 rotate-180" />
+          </button>
+          <h1 className="font-black text-lg">Assinatura</h1>
+          <div className="w-6" />
+        </div>
+      </div>
+
+      <div className="max-w-lg mx-auto p-4 space-y-4">
+        {/* Status Atual */}
+        <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-orange-500 p-3 rounded-xl">
+              <CreditCard className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 uppercase font-bold">Plano Atual</p>
+              <p className="text-xl font-black">{subscription?.plan?.name || 'Gratuito'}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 pt-4 border-t border-zinc-800">
+            <div>
+              <p className="text-xs text-zinc-500">Status</p>
+              <p className={`font-bold ${subscription?.status === 'active' ? 'text-green-500' : 'text-yellow-500'}`}>
+                {subscription?.status === 'active' ? 'Ativo' : 'Pendente'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500">Válido até</p>
+              <p className="font-bold">
+                {subscription?.paid_until 
+                  ? new Date(subscription.paid_until).toLocaleDateString('pt-BR')
+                  : subscription?.trial_ends_at 
+                    ? new Date(subscription.trial_ends_at).toLocaleDateString('pt-BR')
+                    : 'N/A'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Pagamento Pendente */}
+        {subscription?.pending_payment && (
+          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-4">
+            <p className="text-yellow-500 font-bold text-sm">
+              ⚠️ Você tem um pagamento pendente de R$ {parseFloat(subscription.pending_payment.amount).toFixed(2)}
+            </p>
+          </div>
+        )}
+
+        {/* PIX Section */}
+        {pixData ? (
+          <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+            <div className="flex items-center gap-2 text-orange-500">
+              <QrCode className="w-5 h-5" />
+              <span className="font-bold uppercase text-sm">Pague com PIX</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl flex justify-center">
+              <QRCodeSVG value={pixData.pix_code} size={200} />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-500 text-center">Ou copie o código PIX:</p>
+              <div className="bg-zinc-800 p-3 rounded-xl">
+                <p className="text-xs text-zinc-400 break-all font-mono">{pixData.pix_code.substring(0, 50)}...</p>
+              </div>
+              <button
+                onClick={handleCopyPix}
+                className="w-full bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+              >
+                {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                {copied ? 'Copiado!' : 'Copiar Código PIX'}
+              </button>
+            </div>
+
+            <div className="pt-4 border-t border-zinc-800 space-y-3">
+              <button
+                onClick={handleSendWhatsApp}
+                className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Enviar Comprovante pelo WhatsApp
+              </button>
+              <p className="text-xs text-zinc-500 text-center">Envie o comprovante para confirmação mais rápida</p>
+            </div>
+          </div>
+        ) : (
+          /* Gerar PIX */
+          <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+            <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Pagar Mensalidade</h3>
+            
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-4 bg-zinc-800 rounded-xl">
+                <div>
+                  <p className="font-bold">Premium - 1 mês</p>
+                  <p className="text-xs text-zinc-500">R$ 49,90</p>
+                </div>
+                <button
+                  onClick={() => handleGeneratePix(1)}
+                  disabled={pixLoading}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-bold disabled:opacity-50 transition-colors"
+                >
+                  {pixLoading ? '...' : 'Pagar'}
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center p-4 bg-zinc-800 rounded-xl">
+                <div>
+                  <p className="font-bold">Premium - 3 meses</p>
+                  <p className="text-xs text-zinc-500">R$ 149,70 (economize R$ 15)</p>
+                </div>
+                <button
+                  onClick={() => handleGeneratePix(3)}
+                  disabled={pixLoading}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-bold disabled:opacity-50 transition-colors"
+                >
+                  {pixLoading ? '...' : 'Pagar'}
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center p-4 bg-zinc-800 rounded-xl">
+                <div>
+                  <p className="font-bold">Premium - 12 meses</p>
+                  <p className="text-xs text-zinc-500">R$ 499,00 (economize R$ 100)</p>
+                </div>
+                <button
+                  onClick={() => handleGeneratePix(12)}
+                  disabled={pixLoading}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-bold disabled:opacity-50 transition-colors"
+                >
+                  {pixLoading ? '...' : 'Pagar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Benefícios */}
+        <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+          <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Benefícios do Premium</h3>
+          <ul className="space-y-2 text-sm">
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              Até 100 produtos
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              Sistema de reservas
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              IA para insights
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              Suporte prioritário
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const EstablishmentApp = () => {
   const { slug } = useParams();
   const [establishment, setEstablishment] = useState<any>(null);
@@ -3121,7 +4547,10 @@ const EstablishmentApp = () => {
   return (
     <Routes>
       <Route path="/" element={<OnlineMenu slug={slug!} />} />
+      <Route path="/pedido/:id" element={<OrderTracking slug={slug!} />} />
+      <Route path="/meus-pedidos" element={<CustomerOrders slug={slug!} />} />
       <Route path="/admin" element={<AdminDashboard slug={slug!} />} />
+      <Route path="/admin/assinatura" element={<SubscriptionPage slug={slug!} />} />
     </Routes>
   );
 };
