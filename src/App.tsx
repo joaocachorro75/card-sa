@@ -1340,17 +1340,38 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
   );
 };
 
-const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
-  const [username, setUsername] = useState('');
+const AdminLogin = ({ onLogin, slug }: { onLogin: () => void, slug: string }) => {
+  const [whatsapp, setWhatsapp] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'admin' && password === 'admin123') {
-      onLogin();
-    } else {
-      setError('Usuário ou senha incorretos');
+    setLoading(true);
+    setError('');
+    
+    try {
+      // Login via WhatsApp + senha
+      const res = await window.fetch('/api/public/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ whatsapp, password })
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok && data.slug === slug) {
+        onLogin();
+      } else if (res.ok && data.slug !== slug) {
+        setError('Este WhatsApp pertence a outro estabelecimento');
+      } else {
+        setError(data.error || 'Credenciais inválidas');
+      }
+    } catch (e) {
+      setError('Erro ao fazer login');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1371,13 +1392,13 @@ const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Usuário</label>
+            <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">WhatsApp</label>
             <input 
-              type="text" 
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type="tel" 
+              value={whatsapp}
+              onChange={(e) => setWhatsapp(e.target.value.replace(/\D/g, ''))}
               className="w-full bg-zinc-950 border border-zinc-800 p-4 rounded-2xl focus:ring-2 focus:ring-brand-accent outline-none text-white transition-all"
-              placeholder="admin"
+              placeholder="11999999999"
             />
           </div>
           <div>
@@ -1393,9 +1414,10 @@ const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
           {error && <p className="text-red-500 text-sm font-bold text-center">{error}</p>}
           <button 
             type="submit"
-            className="w-full bg-brand-accent text-brand-bg py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
+            disabled={loading}
+            className="w-full bg-brand-accent text-brand-bg py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20 disabled:opacity-50"
           >
-            Entrar no Painel
+            {loading ? 'Entrando...' : 'Entrar no Painel'}
           </button>
         </form>
       </motion.div>
@@ -1732,7 +1754,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
   }, [isLoggedIn, slug]);
 
   if (!isLoggedIn) {
-    return <AdminLogin onLogin={() => setIsLoggedIn(true)} />;
+    return <AdminLogin onLogin={() => setIsLoggedIn(true)} slug={slug} />;
   }
 
   const handleTableSubmit = async (e: React.FormEvent) => {
