@@ -2816,10 +2816,10 @@ const LandingPage = () => {
       });
       const data = await res.json();
       if (res.ok) {
-        // Mostrar tela de sucesso com credenciais
+        // Mostrar tela de sucesso com credenciais (usa WhatsApp normalizado do backend)
         setRegistrationSuccess({
           slug: data.slug,
-          whatsapp: formData.owner_whatsapp,
+          whatsapp: data.whatsapp || formData.owner_whatsapp,
           password: formData.password
         });
       } else {
@@ -3097,10 +3097,11 @@ const LandingPage = () => {
                   required
                   type="tel"
                   value={formData.owner_whatsapp}
-                  onChange={e => setFormData({...formData, owner_whatsapp: e.target.value})}
+                  onChange={e => setFormData({...formData, owner_whatsapp: e.target.value.replace(/\D/g, '')})}
                   className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-brand-accent text-white transition-all" 
-                  placeholder="Ex: 5511999999999"
+                  placeholder="11999999999 ou 5511999999999"
                 />
+                <p className="text-xs text-zinc-600 mt-1">Digite DDD + número ou código país + DDD + número</p>
               </div>
               <div>
                 <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Senha</label>
@@ -3220,7 +3221,7 @@ const LandingPage = () => {
               </div>
 
               <p className="text-center text-zinc-500 text-sm mb-6">
-                💡 Enviamos seus dados de acesso para o WhatsApp cadastrado!
+                💡 Guarde seus dados de acesso para entrar no painel!
               </p>
               
               <div className="flex gap-4">

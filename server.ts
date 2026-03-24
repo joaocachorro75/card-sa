@@ -424,6 +424,25 @@ const getEstablishment = async (req: any, res: any, next: any) => {
   next();
 };
 
+// Função para normalizar número de WhatsApp (formato internacional 55XXXXXXXXXXX)
+function normalizeWhatsApp(phone: string): string {
+  if (!phone) return '';
+  // Remove tudo que não é número
+  let cleaned = phone.replace(/\D/g, '');
+  // Se não tem código do país, adiciona 55 (Brasil)
+  if (cleaned.length <= 11 && !cleaned.startsWith('55')) {
+    cleaned = '55' + cleaned;
+  }
+  // Se tem 13 dígitos e começa com 55, está correto
+  // Se tem 12 dígitos (55 + DDD + 8 dígitos), adiciona 9 após DDD
+  if (cleaned.length === 12 && cleaned.startsWith('55')) {
+    const ddd = cleaned.substring(2, 4);
+    const numero = cleaned.substring(4);
+    cleaned = '55' + ddd + '9' + numero;
+  }
+  return cleaned;
+}
+
 // Função para enviar WhatsApp via Evolution API
 async function sendWhatsAppMessage(phone: string, message: string) {
   try {
@@ -431,13 +450,12 @@ async function sendWhatsAppMessage(phone: string, message: string) {
     const evolutionKey = process.env.EVOLUTION_KEY || '5BE128D18942-4B09-8AF8-454ADEEB06B1';
     const instance = process.env.EVOLUTION_INSTANCE || 'corretinho';
     
-    // Formatar telefone (adicionar 55 se necessário)
-    let formattedPhone = phone.replace(/\D/g, '');
-    if (!formattedPhone.startsWith('55')) {
-      formattedPhone = '55' + formattedPhone;
-    }
+    // Normalizar telefone
+    const formattedPhone = normalizeWhatsApp(phone);
     
-    await fetch(`${evolutionUrl}/message/sendText/${instance}`, {
+    console.log(`📱 Enviando WhatsApp para ${formattedPhone}...`);
+    
+    const response = await fetch(`${evolutionUrl}/message/sendText/${instance}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -448,7 +466,13 @@ async function sendWhatsAppMessage(phone: string, message: string) {
         textMessage: { text: message }
       })
     });
-    console.log(`✅ WhatsApp enviado para ${formattedPhone}`);
+    
+    if (response.ok) {
+      console.log(`✅ WhatsApp enviado para ${formattedPhone}`);
+    } else {
+      const errorText = await response.text();
+      console.error(`❌ Erro ao enviar WhatsApp (${response.status}):`, errorText);
+    }
   } catch (error) {
     console.error('❌ Erro ao enviar WhatsApp:', error);
   }
@@ -457,32 +481,35 @@ async function sendWhatsAppMessage(phone: string, message: string) {
 // Routes (abbreviated for brevity - same logic as SQLite version but with pool.execute)
 app.post("/api/public/register", async (req, res) => {
   const { name, slug, owner_whatsapp, password } = req.body;
+  
+  // Normalizar WhatsApp para formato internacional
+  const normalizedWhatsapp = normalizeWhatsApp(owner_whatsapp);
+  
   try {
-    const [result] = await pool.execute("INSERT INTO establishments (name, slug, owner_whatsapp, password, plan_id) VALUES (?, ?, ?, ?, ?)", [name, slug, owner_whatsapp, password, 1]);
+    const [result] = await pool.execute("INSERT INTO establishments (name, slug, owner_whatsapp, password, plan_id) VALUES (?, ?, ?, ?, ?)", [name, slug, normalizedWhatsapp, password, 1]);
     
-    // Enviar WhatsApp com dados de acesso
-    const welcomeMessage = `🎉 *Bem-vindo ao MaisQueCardapio!*
-
-Seu cardápio digital foi criado com sucesso!
-
-📋 *Seus dados de acesso:*
-
-🌐 *URL do Cardápio:*
-maisquecardapio.to-ligado.com/e/${slug}
-
-📱 *WhatsApp:* ${owner_whatsapp}
-🔑 *Senha:* ${password}
-
----
-💡 *Dica:* Salve esta mensagem!
-
-Acesse seu painel para configurar produtos, categorias e muito mais!
-
-_Equipe MaisQueCardapio | To-Ligado.com_`;
+    // TODO: Enviar WhatsApp quando tiver instância dedicada do MaisQueCardapio
+    // const welcomeMessage = `🎉 *Bem-vindo ao MaisQueCardapio!*
+// 
+// Seu cardápio digital foi criado com sucesso!
+// 
+// 📋 *Seus dados de acesso:*
+// 
+// 🌐 *URL do Cardápio:*
+// maisquecardapio.to-ligado.com/e/${slug}
+// 
+// 📱 *WhatsApp:* ${normalizedWhatsapp}
+// 🔑 *Senha:* ${password}
+// 
+// ---
+// 💡 *Dica:* Salve esta mensagem!
+// 
+// Acesse seu painel para configurar produtos, categorias e muito mais!
+// 
+// _Equipe MaisQueCardapio | To-Ligado.com_`;
+    // sendWhatsAppMessage(normalizedWhatsapp, welcomeMessage);
     
-    sendWhatsAppMessage(owner_whatsapp, welcomeMessage);
-    
-    res.json({ id: (result as any).insertId, slug });
+    res.json({ id: (result as any).insertId, slug, whatsapp: normalizedWhatsapp });
   } catch (e) { res.status(400).json({ error: "Slug em uso" }); }
 });
 
