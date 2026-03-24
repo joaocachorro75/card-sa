@@ -20,29 +20,30 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install MySQL client
-RUN apk add --no-cache mysql-client
+# Install wget for healthcheck
+RUN apk add --no-cache wget
 
 # Copy package files
 COPY package*.json ./
 
 # Install production dependencies (including mysql2)
-RUN npm ci --only=production
+RUN npm ci --only=production && npm install tsx typescript
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/server-mysql.ts ./
+COPY --from=builder /app/server.ts ./
 COPY --from=builder /app/tsconfig.json ./
 
-# Install tsx for TypeScript execution
-RUN npm install tsx
-
 # Expose port
-EXPOSE 3000
+EXPOSE 80
 
-# Environment
+# Environment defaults
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=80
 
-# Start server with MySQL
-CMD ["npx", "tsx", "server-mysql.ts"]
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:80/health || exit 1
+
+# Start server
+CMD ["npx", "tsx", "server.ts"]
