@@ -778,7 +778,18 @@ app.post("/api/e/orders", async (req: any, res) => {
         total_orders = total_orders + 1,
         total_spent = total_spent + VALUES(total_spent),
         last_order_at = NOW()
-    `, [req.establishment.id, customer_name, customer_phone, customer_email, address, address_number, address_complement, address_reference, neighborhood_id, total]);
+    `, [
+      req.establishment.id, 
+      customer_name || null, 
+      customer_phone, 
+      customer_email || null, 
+      address || null, 
+      address_number || null, 
+      address_complement || null, 
+      address_reference || null, 
+      neighborhood_id || null, 
+      total || 0
+    ]);
   }
   
   res.json({ 
