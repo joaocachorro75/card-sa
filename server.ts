@@ -683,38 +683,39 @@ app.get("/api/e/orders/:id", async (req: any, res) => {
 
 // Criar pedido com dados completos
 app.post("/api/e/orders", async (req: any, res) => {
-  const { 
-    customer_name, 
-    customer_phone, 
-    customer_email,
-    address, 
-    address_number,
-    address_complement,
-    address_reference,
-    neighborhood_id, 
-    total, 
-    delivery_fee,
-    payment_method, 
-    type, 
-    items_text,
-    notes
-  } = req.body;
-  
-  // Gerar PIX Code se for pagamento PIX
-  let pixCode = null;
-  let pixQrcode = null;
-  let pixExpiresAt = null;
-  let paymentStatus = 'pending';
-  
-  if (payment_method === 'pix') {
-    // Buscar chave PIX do estabelecimento
-    const [settingsRows] = await pool.execute(
-      "SELECT value FROM settings WHERE establishment_id = ? AND `key` = 'pix_key'",
-      [req.establishment.id]
-    );
+  try {
+    const { 
+      customer_name, 
+      customer_phone, 
+      customer_email,
+      address, 
+      address_number,
+      address_complement,
+      address_reference,
+      neighborhood_id, 
+      total, 
+      delivery_fee,
+      payment_method, 
+      type, 
+      items_text,
+      notes
+    } = req.body;
+    
+    // Gerar PIX Code se for pagamento PIX
+    let pixCode = null;
+    let pixQrcode = null;
+    let pixExpiresAt = null;
+    let paymentStatus = 'pending';
+    
+    if (payment_method === 'pix') {
+      // Buscar chave PIX do estabelecimento
+      const [settingsRows] = await pool.execute(
+        "SELECT value FROM settings WHERE establishment_id = ? AND `key` = 'pix_key'",
+        [req.establishment.id]
+      );
     const pixKey = (settingsRows as any)[0]?.value || '';
     
-    if (pixKey) {
+    if (pixKey && total) {
       // Gerar BR Code (copia e cola)
       const txid = `ORDER${Date.now()}`.substring(0, 25);
       pixCode = generatePixCode(pixKey, total, `Pedido #${Date.now()}`, txid);
@@ -799,6 +800,10 @@ app.post("/api/e/orders", async (req: any, res) => {
     pix_expires_at: pixExpiresAt,
     payment_status: paymentStatus
   });
+  } catch (error) {
+    console.error('Erro ao criar pedido:', error);
+    res.status(500).json({ error: 'Erro ao criar pedido' });
+  }
 });
 
 // Confirmar pagamento PIX (manual pelo admin)
