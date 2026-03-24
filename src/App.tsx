@@ -2803,6 +2803,7 @@ const LandingPage = () => {
   const [loginData, setLoginData] = useState({ slug: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [registrationSuccess, setRegistrationSuccess] = useState<{slug: string, whatsapp: string, password: string} | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2815,7 +2816,12 @@ const LandingPage = () => {
       });
       const data = await res.json();
       if (res.ok) {
-        window.location.href = `/e/${data.slug}/admin`;
+        // Mostrar tela de sucesso com credenciais
+        setRegistrationSuccess({
+          slug: data.slug,
+          whatsapp: formData.owner_whatsapp,
+          password: formData.password
+        });
       } else {
         alert(data.error);
       }
@@ -3175,6 +3181,65 @@ const LandingPage = () => {
                   Entrar
                 </button>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de Sucesso no Registro */}
+      <AnimatePresence>
+        {registrationSuccess && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="relative bg-brand-surface w-full max-w-lg rounded-[32px] shadow-2xl p-10 border border-brand-accent/30"
+            >
+              <div className="text-center mb-8">
+                <div className="bg-brand-accent/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Check className="w-10 h-10 text-brand-accent" />
+                </div>
+                <h2 className="text-3xl font-black mb-2 uppercase tracking-tighter">Cadastro <span className="text-brand-accent">Realizado!</span></h2>
+                <p className="text-zinc-400">Guarde seus dados de acesso:</p>
+              </div>
+              
+              <div className="bg-zinc-950 rounded-2xl p-6 mb-6 border border-zinc-800">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center py-3 border-b border-zinc-800">
+                    <span className="text-zinc-500 text-sm font-bold uppercase">URL do Cardápio</span>
+                    <span className="text-brand-accent font-mono text-sm">maisquecardapio.to-ligado.com/e/{registrationSuccess.slug}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-3 border-b border-zinc-800">
+                    <span className="text-zinc-500 text-sm font-bold uppercase">WhatsApp</span>
+                    <span className="text-white font-mono">{registrationSuccess.whatsapp}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-3">
+                    <span className="text-zinc-500 text-sm font-bold uppercase">Senha</span>
+                    <span className="text-white font-mono">{registrationSuccess.password}</span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-center text-zinc-500 text-sm mb-6">
+                💡 Enviamos seus dados de acesso para o WhatsApp cadastrado!
+              </p>
+              
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(`URL: maisquecardapio.to-ligado.com/e/${registrationSuccess.slug}\nWhatsApp: ${registrationSuccess.whatsapp}\nSenha: ${registrationSuccess.password}`);
+                    alert('Dados copiados!');
+                  }}
+                  className="flex-1 bg-zinc-800 text-white py-4 rounded-2xl font-bold hover:bg-zinc-700 transition-all border border-zinc-700"
+                >
+                  Copiar Dados
+                </button>
+                <Link 
+                  to={`/e/${registrationSuccess.slug}/admin`}
+                  className="flex-1 bg-brand-accent text-brand-bg py-4 rounded-2xl font-black uppercase text-center hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
+                >
+                  Acessar Painel
+                </Link>
+              </div>
             </motion.div>
           </div>
         )}

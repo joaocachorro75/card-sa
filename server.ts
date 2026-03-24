@@ -424,11 +424,64 @@ const getEstablishment = async (req: any, res: any, next: any) => {
   next();
 };
 
+// Função para enviar WhatsApp via Evolution API
+async function sendWhatsAppMessage(phone: string, message: string) {
+  try {
+    const evolutionUrl = process.env.EVOLUTION_URL || 'https://to-ligado-evolution-api.m6tens.easypanel.host';
+    const evolutionKey = process.env.EVOLUTION_KEY || '5BE128D18942-4B09-8AF8-454ADEEB06B1';
+    const instance = process.env.EVOLUTION_INSTANCE || 'corretinho';
+    
+    // Formatar telefone (adicionar 55 se necessário)
+    let formattedPhone = phone.replace(/\D/g, '');
+    if (!formattedPhone.startsWith('55')) {
+      formattedPhone = '55' + formattedPhone;
+    }
+    
+    await fetch(`${evolutionUrl}/message/sendText/${instance}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': evolutionKey
+      },
+      body: JSON.stringify({
+        number: formattedPhone,
+        textMessage: { text: message }
+      })
+    });
+    console.log(`✅ WhatsApp enviado para ${formattedPhone}`);
+  } catch (error) {
+    console.error('❌ Erro ao enviar WhatsApp:', error);
+  }
+}
+
 // Routes (abbreviated for brevity - same logic as SQLite version but with pool.execute)
 app.post("/api/public/register", async (req, res) => {
   const { name, slug, owner_whatsapp, password } = req.body;
   try {
     const [result] = await pool.execute("INSERT INTO establishments (name, slug, owner_whatsapp, password, plan_id) VALUES (?, ?, ?, ?, ?)", [name, slug, owner_whatsapp, password, 1]);
+    
+    // Enviar WhatsApp com dados de acesso
+    const welcomeMessage = `🎉 *Bem-vindo ao MaisQueCardapio!*
+
+Seu cardápio digital foi criado com sucesso!
+
+📋 *Seus dados de acesso:*
+
+🌐 *URL do Cardápio:*
+maisquecardapio.to-ligado.com/e/${slug}
+
+📱 *WhatsApp:* ${owner_whatsapp}
+🔑 *Senha:* ${password}
+
+---
+💡 *Dica:* Salve esta mensagem!
+
+Acesse seu painel para configurar produtos, categorias e muito mais!
+
+_Equipe MaisQueCardapio | To-Ligado.com_`;
+    
+    sendWhatsAppMessage(owner_whatsapp, welcomeMessage);
+    
     res.json({ id: (result as any).insertId, slug });
   } catch (e) { res.status(400).json({ error: "Slug em uso" }); }
 });
