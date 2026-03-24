@@ -627,7 +627,14 @@ app.get("/api/e/products", async (req: any, res) => {
 
 app.post("/api/e/products", async (req: any, res) => {
   const { category_id, name, description, price, image_url } = req.body;
-  const [result] = await pool.execute("INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)", [req.establishment.id, category_id, name, description, price, image_url]);
+  const [result] = await pool.execute("INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)", [
+    req.establishment.id, 
+    category_id ?? null, 
+    name ?? null, 
+    description ?? null, 
+    price ?? null, 
+    image_url ?? null
+  ]);
   res.json({ id: (result as any).insertId });
 });
 
@@ -735,10 +742,10 @@ app.post("/api/e/orders", async (req: any, res) => {
     address_complement || null, 
     address_reference || null,
     neighborhood_id || null, 
-    total, 
-    delivery_fee || 0, 
-    payment_method, 
-    paymentStatus,
+    total ?? 0, 
+    delivery_fee ?? 0, 
+    payment_method || 'dinheiro', 
+    paymentStatus || 'pending',
     pixCode || null, 
     pixQrcode || null, 
     pixExpiresAt || null, 
@@ -2116,7 +2123,7 @@ app.get('/api/superadmin/payments', async (req: any, res) => {
     }
     
     query += ` ORDER BY p.created_at DESC LIMIT ?`;
-    params.push(parseInt(limit));
+    params.push(parseInt(String(limit)) || 50);
     
     const [rows] = await pool.execute(query, params);
     
