@@ -766,8 +766,8 @@ app.post("/api/e/orders", async (req: any, res) => {
   // Atualizar estatísticas do cliente se existir
   if (customer_phone) {
     await pool.execute(`
-      INSERT INTO customers (establishment_id, name, phone, email, address, address_number, address_complement, address_reference, neighborhood_id, total_orders, total_spent, last_order_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())
+      INSERT INTO customers (establishment_id, name, phone, email, password, address, address_number, address_complement, address_reference, neighborhood_id, total_orders, total_spent, last_order_at)
+      VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, 1, ?, NOW())
       ON DUPLICATE KEY UPDATE 
         name = VALUES(name),
         email = COALESCE(VALUES(email), email),
