@@ -1630,12 +1630,25 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [activeTab, setActiveTab] = useState<'products' | 'tables' | 'delivery' | 'categories' | 'orders' | 'commands' | 'reservations' | 'ai' | 'help' | 'settings' | 'subscription'>('orders');
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    // Verifica se já está logado no localStorage
+    return localStorage.getItem(`admin_auth_${slug}`) === 'true';
+  });
   const [tables, setTables] = useState<{id: number, number: number}[]>([]);
   const [commands, setCommands] = useState<any[]>([]);
   const [reservations, setReservations] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>({});
+
+  const handleLogin = () => {
+    setIsLoggedIn(true);
+    localStorage.setItem(`admin_auth_${slug}`, 'true');
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem(`admin_auth_${slug}`);
+  };
 
   const apiFetch = (url: string, options: any = {}) => {
     return window.fetch(`/api/e${url}`, {
@@ -1754,7 +1767,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
   }, [isLoggedIn, slug]);
 
   if (!isLoggedIn) {
-    return <AdminLogin onLogin={() => setIsLoggedIn(true)} slug={slug} />;
+    return <AdminLogin onLogin={handleLogin} slug={slug} />;
   }
 
   const handleTableSubmit = async (e: React.FormEvent) => {
@@ -1865,10 +1878,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
       <Navbar 
         settings={settings} 
         slug={slug} 
-        onLogout={() => {
-          setIsLoggedIn(false);
-          localStorage.removeItem(`admin_auth_${slug}`);
-        }} 
+        onLogout={handleLogout} 
       />
       <div className="max-w-7xl mx-auto p-4 md:p-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
