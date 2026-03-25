@@ -136,7 +136,7 @@ async function initDatabase() {
   // Tabela de pagamentos PIX
   await connection.execute(`CREATE TABLE IF NOT EXISTS payments (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    order_id INT NOT NULL,
+    order_id INT NULL,
     establishment_id INT NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
     pix_code TEXT,
@@ -148,6 +148,13 @@ async function initDatabase() {
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
     FOREIGN KEY (establishment_id) REFERENCES establishments(id)
   )`);
+
+  // Corrige tabela existente para permitir order_id NULL (pagamentos de assinatura)
+  try {
+    await connection.execute(`ALTER TABLE payments MODIFY COLUMN order_id INT NULL`);
+  } catch (e: any) {
+    if (!e.message.includes('Unknown column')) console.log('payments já permite NULL');
+  }
 
   // Tabela de histórico de status do pedido
   await connection.execute(`CREATE TABLE IF NOT EXISTS order_history (
@@ -1989,10 +1996,10 @@ app.post('/api/e/subscription/generate-pix', async (req: any, res) => {
     const txid = `SUB${req.establishment.id}${Date.now()}`.substring(0, 25);
     const pixCode = generatePixCode(pixKey, amount, `Mensalidade ${plan.name}`, txid);
     
-    // Criar registro de pagamento na tabela payments
+    // Criar registro de pagamento na tabela payments (order_id NULL para assinatura)
     const [result] = await pool.execute(`
       INSERT INTO payments (order_id, establishment_id, amount, pix_code, pix_qrcode, status, created_at)
-      VALUES (0, ?, ?, ?, ?, 'pending', NOW())
+      VALUES (NULL, ?, ?, ?, ?, 'pending', NOW())
     `, [req.establishment.id, amount, pixCode, pixCode]);
     
     const paymentId = (result as any).insertId;
@@ -2128,10 +2135,10 @@ app.post('/api/public/register-with-payment', async (req, res) => {
       const txid = `NEW${establishmentId}${Date.now()}`.substring(0, 25);
       const pixCode = generatePixCode(pixKey, amount, `Mensalidade ${plan.name}`, txid);
       
-      // Criar registro de pagamento
+      // Criar registro de pagamento (order_id NULL para assinatura)
       const [paymentResult] = await pool.execute(`
         INSERT INTO payments (order_id, establishment_id, amount, pix_code, pix_qrcode, status, created_at)
-        VALUES (0, ?, ?, ?, ?, 'pending', NOW())
+        VALUES (NULL, ?, ?, ?, ?, 'pending', NOW())
       `, [establishmentId, amount, pixCode, pixCode]);
       
       paymentInfo = {
