@@ -527,9 +527,11 @@ app.post("/api/public/login", async (req, res) => {
       query = "SELECT slug, password FROM establishments WHERE slug = ?";
       params = [slugHeader];
     } else if (whatsapp) {
-      // Login por whatsapp (body)
-      query = "SELECT slug, password FROM establishments WHERE owner_whatsapp = ?";
-      params = [whatsapp];
+      // Login por whatsapp (body) - tenta com e sem normalização
+      const normalized = normalizeWhatsApp(whatsapp);
+      // Tenta buscar com número normalizado
+      query = "SELECT slug, password, owner_whatsapp FROM establishments WHERE owner_whatsapp IN (?, ?, ?)";
+      params = [normalized, whatsapp.replace(/\D/g, ''), whatsapp];
     } else {
       return res.status(400).json({ error: "Informe whatsapp no body ou X-Establishment-Slug no header" });
     }
