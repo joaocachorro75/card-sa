@@ -1482,38 +1482,6 @@ app.get("/api/e/reservations", async (req: any, res) => {
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://automacao-evolution-api.nfeujb.easypanel.host';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '5BE128D18942-4B09-8AF8-454ADEEB06B1';
-const TOLIGADO_INSTANCE = 'toligado';
-const BASE_URL = process.env.BASE_URL || 'https://automacao-maisquecardapio.nfeujb.easypanel.host';
-
-// Enviar mensagem WhatsApp via Evolution API
-async function sendWhatsAppMessage(to: string, message: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${TOLIGADO_INSTANCE}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': EVOLUTION_API_KEY
-      },
-      body: JSON.stringify({
-        number: to,
-        options: { delay: 1000, presence: 'composing' },
-        textMessage: { text: message }
-      })
-    });
-    
-    if (response.ok) {
-      console.log(`✅ WhatsApp enviado para ${to}`);
-      return true;
-    } else {
-      console.error(`❌ Erro ao enviar WhatsApp:`, await response.text());
-      return false;
-    }
-  } catch (error) {
-    console.error('❌ Erro ao enviar WhatsApp:', error);
-    return false;
-  }
-}
-
 // Gerar slug único
 async function generateUniqueSlug(baseName: string): Promise<string> {
   let slug = baseName
