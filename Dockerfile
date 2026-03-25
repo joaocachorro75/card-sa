@@ -26,6 +26,9 @@ COPY --from=builder /app/dist ./dist
 COPY server.ts ./
 COPY tsconfig.json ./
 
+# Cria pasta de uploads para imagens
+RUN mkdir -p /app/uploads
+
 ENV NODE_ENV=production
 ENV PORT=80
 

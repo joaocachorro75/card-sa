@@ -2382,13 +2382,43 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-zinc-700 mb-1">URL da Logo</label>
-                  <input 
-                    value={settings.store_logo || ''} 
-                    onChange={e => setSettings({...settings, store_logo: e.target.value})}
-                    className="w-full bg-zinc-50 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" 
-                    placeholder="https://exemplo.com/logo.png"
-                  />
+                  <label className="block text-sm font-bold text-zinc-700 mb-1">Logomarca</label>
+                  <div className="flex flex-col gap-2">
+                    <input 
+                      type="file"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 5 * 1024 * 1024) {
+                            alert('Imagem muito grande. Máximo 5MB');
+                            return;
+                          }
+                          const formDataUpload = new FormData();
+                          formDataUpload.append('logo', file);
+                          try {
+                            const res = await apiFetch('/upload/logo', {
+                              method: 'POST',
+                              body: formDataUpload
+                            });
+                            const data = await res.json();
+                            if (data.logo_url) {
+                              setSettings({...settings, store_logo: data.logo_url});
+                            }
+                          } catch (err) {
+                            alert('Erro ao fazer upload da logomarca');
+                          }
+                        }
+                      }}
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                    />
+                    {settings.store_logo && (
+                      <div className="flex items-center gap-3">
+                        <img src={settings.store_logo} alt="Logo atual" className="h-12 object-contain rounded-lg border border-zinc-200" />
+                        <button type="button" onClick={() => setSettings({...settings, store_logo: ''})} className="text-xs text-red-500">Remover</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-zinc-700 mb-1">Cor Primária</label>
@@ -2720,8 +2750,43 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                       </select>
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-sm font-bold text-zinc-700 mb-1">URL da Imagem</label>
-                      <input required value={formData.image_url} onChange={e => setFormData({...formData, image_url: e.target.value})} className="w-full bg-zinc-50 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+                      <label className="block text-sm font-bold text-zinc-700 mb-1">Imagem do Produto</label>
+                      <div className="flex gap-2">
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 5 * 1024 * 1024) {
+                                alert('Imagem muito grande. Máximo 5MB');
+                                return;
+                              }
+                              const formDataUpload = new FormData();
+                              formDataUpload.append('image', file);
+                              try {
+                                const res = await apiFetch('/upload/product', {
+                                  method: 'POST',
+                                  body: formDataUpload
+                                });
+                                const data = await res.json();
+                                if (data.image_url) {
+                                  setFormData({...formData, image_url: data.image_url});
+                                }
+                              } catch (err) {
+                                alert('Erro ao fazer upload da imagem');
+                              }
+                            }
+                          }}
+                          className="flex-1 bg-zinc-50 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                        />
+                      </div>
+                      {formData.image_url && (
+                        <div className="mt-2">
+                          <img src={formData.image_url} alt="Preview" className="w-20 h-20 object-cover rounded-xl" />
+                          <button type="button" onClick={() => setFormData({...formData, image_url: ''})} className="text-xs text-red-500 mt-1">Remover imagem</button>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <button type="submit" className="w-full bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition-all">Salvar Produto</button>

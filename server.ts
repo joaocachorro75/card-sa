@@ -6,10 +6,45 @@ import { fileURLToPath } from "url";
 import axios from "axios";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import multer from "multer";
+import fs from "fs";
 
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Criar pasta de uploads se não existir
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Configurar multer para upload de arquivos
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      cb(null, true);
+    } else {
+      cb(new Error('Apenas imagens são permitidas (jpeg, jpg, png, gif, webp)'));
+    }
+  }
+});
 
 // MySQL Connection Pool
 const pool = mysql.createPool({
@@ -707,6 +742,43 @@ app.use("/api/e", getEstablishment);
 app.get("/api/e/categories", async (req: any, res) => {
   const [rows] = await pool.execute("SELECT * FROM categories WHERE establishment_id = ?", [req.establishment.id]);
   res.json(rows);
+});
+
+// Servir arquivos de upload estaticamente
+app.use('/uploads', express.static(uploadsDir));
+
+// Upload de imagem de produto
+app.post("/api/e/upload/product", upload.single('image'), (req: any, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Nenhum arquivo enviado" });
+    }
+    const imageUrl = `/uploads/${req.file.filename}`;
+    res.json({ 
+      success: true, 
+      image_url: imageUrl,
+      filename: req.file.filename 
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao fazer upload" });
+  }
+});
+
+// Upload de logomarca do estabelecimento
+app.post("/api/e/upload/logo", upload.single('logo'), (req: any, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Nenhum arquivo enviado" });
+    }
+    const logoUrl = `/uploads/${req.file.filename}`;
+    res.json({ 
+      success: true, 
+      logo_url: logoUrl,
+      filename: req.file.filename 
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao fazer upload" });
+  }
 });
 
 app.get("/api/e/products", async (req: any, res) => {
