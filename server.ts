@@ -8,9 +8,11 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import multer from "multer";
 import fs from "fs";
+import { createMockPool } from "./mockPool.ts";
 
 dotenv.config();
 
+const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Criar pasta de uploads se não existir
@@ -46,20 +48,27 @@ const upload = multer({
   }
 });
 
-// MySQL Connection Pool
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || "localhost",
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "maisquecardapio",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+// MySQL Connection Pool (with automatic in-memory fallback when DB is unavailable)
+let pool: any = process.env.DB_HOST
+  ? mysql.createPool({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER || "root",
+      password: process.env.DB_PASSWORD || "",
+      database: process.env.DB_NAME || "maisquecardapio",
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+      connectTimeout: 3000,
+    })
+  : createMockPool();
 
 // Initialize Database Tables
 async function initDatabase() {
   try {
+    if (!process.env.DB_HOST) {
+      console.log("[AI Studio] DB_HOST not configured — using in-memory mock store");
+      return;
+    }
     const connection = await pool.getConnection();
   
   await connection.execute(`CREATE TABLE IF NOT EXISTS plans (
@@ -69,7 +78,8 @@ async function initDatabase() {
     max_products INT,
     enable_ai TINYINT DEFAULT 0,
     enable_reservations TINYINT DEFAULT 0,
-    enable_automation TINYINT DEFAULT 0
+    enable_automation TINYINT DEFAULT 1,
+    enable_tables TINYINT DEFAULT 0
   )`);
 
   await connection.execute(`CREATE TABLE IF NOT EXISTS establishments (
@@ -168,27 +178,50 @@ async function initDatabase() {
     FOREIGN KEY (establishment_id) REFERENCES establishments(id)
   )`);
 
-  // Tabela de pagamentos PIX
+  // Tabela de pagamentos PIX / InfinitePay
   await connection.execute(`CREATE TABLE IF NOT EXISTS payments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     order_id INT NULL,
     establishment_id INT NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
+    payment_method VARCHAR(50) DEFAULT 'pix',
+    external_id VARCHAR(255) NULL,
+    checkout_url TEXT NULL,
+    notes TEXT NULL,
     pix_code TEXT,
     pix_qrcode TEXT,
     status VARCHAR(50) DEFAULT 'pending',
     paid_at DATETIME NULL,
-    confirmed_by INT NULL,
+    confirmed_by VARCHAR(100) NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
     FOREIGN KEY (establishment_id) REFERENCES establishments(id)
   )`);
 
-  // Corrige tabela existente para permitir order_id NULL (pagamentos de assinatura)
+  // Tabela de configurações globais da plataforma (SuperAdmin)
+  await connection.execute(`CREATE TABLE IF NOT EXISTS platform_settings (
+    \`key\` VARCHAR(255) PRIMARY KEY,
+    value TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  // Corrige tabela existente para permitir order_id NULL (pagamentos de assinatura) e colunas novas
   try {
     await connection.execute(`ALTER TABLE payments MODIFY COLUMN order_id INT NULL`);
   } catch (e: any) {
     if (!e.message.includes('Unknown column')) console.log('payments já permite NULL');
+  }
+  for (const colSql of [
+    `ALTER TABLE payments ADD COLUMN payment_method VARCHAR(50) DEFAULT 'pix'`,
+    `ALTER TABLE payments ADD COLUMN external_id VARCHAR(255) NULL`,
+    `ALTER TABLE payments ADD COLUMN checkout_url TEXT NULL`,
+    `ALTER TABLE payments ADD COLUMN notes TEXT NULL`
+  ]) {
+    try {
+      await connection.execute(colSql);
+    } catch (e: any) {
+      // Ignore duplicate column error
+    }
   }
 
   // Tabela de histórico de status do pedido
@@ -237,6 +270,7 @@ async function initDatabase() {
     table_id INT,
     waiter_name VARCHAR(255),
     status VARCHAR(50) DEFAULT 'open',
+    bill_requested_at DATETIME NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (establishment_id) REFERENCES establishments(id),
     FOREIGN KEY (table_id) REFERENCES tables(id)
@@ -345,13 +379,35 @@ async function initDatabase() {
     }
   } catch (e) { console.log('Erro delivery_fee:', e); }
   
+  try {
+    const [cols] = await connection.execute(`SHOW COLUMNS FROM plans LIKE 'enable_tables'`);
+    if ((cols as any[]).length === 0) {
+      await connection.execute(`ALTER TABLE plans ADD COLUMN enable_tables TINYINT DEFAULT 0`);
+      await connection.execute(`UPDATE plans SET enable_tables = 1 WHERE price > 0 OR id = 2`);
+      await connection.execute(`UPDATE plans SET enable_tables = 0 WHERE price = 0 AND id = 1`);
+      console.log('✅ Coluna enable_tables adicionada em plans');
+    }
+  } catch (e) { console.log('Erro enable_tables:', e); }
+
+  try {
+    await connection.execute(`UPDATE plans SET enable_automation = 1 WHERE id = 1 AND price = 0`);
+  } catch (e) { console.log('Erro sync enable_automation:', e); }
+
+  try {
+    const [cols] = await connection.execute(`SHOW COLUMNS FROM commands LIKE 'bill_requested_at'`);
+    if ((cols as any[]).length === 0) {
+      await connection.execute(`ALTER TABLE commands ADD COLUMN bill_requested_at DATETIME NULL`);
+      console.log('✅ Coluna bill_requested_at adicionada em commands');
+    }
+  } catch (e) { console.log('Erro bill_requested_at:', e); }
+
   console.log('✅ Migration concluída!');
 
   // Seed demo data if empty
   const [plans] = await connection.execute("SELECT COUNT(*) as count FROM plans");
   if ((plans as any)[0].count === 0) {
-    await connection.execute("INSERT INTO plans (name, price, max_products, enable_ai, enable_reservations, enable_automation) VALUES (?, ?, ?, ?, ?, ?)", ["Gratuito", 0, 10, 0, 0, 0]);
-    await connection.execute("INSERT INTO plans (name, price, max_products, enable_ai, enable_reservations, enable_automation) VALUES (?, ?, ?, ?, ?, ?)", ["Premium", 49.90, 100, 1, 1, 1]);
+    await connection.execute("INSERT INTO plans (name, price, max_products, enable_ai, enable_reservations, enable_automation, enable_tables) VALUES (?, ?, ?, ?, ?, ?, ?)", ["Gratuito", 0, 10, 0, 0, 1, 0]);
+    await connection.execute("INSERT INTO plans (name, price, max_products, enable_ai, enable_reservations, enable_automation, enable_tables) VALUES (?, ?, ?, ?, ?, ?, ?)", ["Premium", 49.90, 100, 1, 1, 1, 1]);
     await connection.execute("INSERT INTO establishments (name, slug, owner_whatsapp, password, plan_id) VALUES (?, ?, ?, ?, ?)", ["MaisQueCardapio Demo", "demo", "5511999999999", "admin123", 2]);
     
     const [est] = await connection.execute("SELECT id FROM establishments WHERE slug = ?", ["demo"]);
@@ -363,12 +419,19 @@ async function initDatabase() {
       [estId, "whatsapp_cashier", "5511999999999"],
       [estId, "store_name", "MaisQueCardapio Demo"],
       [estId, "primary_color", "#f97316"],
+      [estId, "catalog_theme", "light"],
+      [estId, "catalog_banner", "/assets/demo/banner-demo.jpg"],
       [estId, "is_open", "1"],
     ];
     for (const s of settings) await connection.execute("INSERT INTO settings (establishment_id, \`key\`, value) VALUES (?, ?, ?)", s);
     
-    await connection.execute("INSERT INTO categories (establishment_id, name) VALUES (?, ?)", [estId, "Hambúrgueres"]);
-    await connection.execute("INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)", [estId, 1, "X-Burger", "Pão, carne 150g, queijo", 25.90, "https://picsum.photos/seed/burger1/400/300"]);
+    const [catBurgers] = await connection.execute("INSERT INTO categories (establishment_id, name) VALUES (?, ?)", [estId, "Hambúrgueres"]);
+    const [catDrinks] = await connection.execute("INSERT INTO categories (establishment_id, name) VALUES (?, ?)", [estId, "Bebidas"]);
+    const burgersId = (catBurgers as any).insertId;
+    const drinksId = (catDrinks as any).insertId;
+    await connection.execute("INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)", [estId, burgersId, "X-Burger Clássico", "Pão, carne 150g, queijo e maionese da casa.", 25.90, "/assets/demo/x-burger.jpg"]);
+    await connection.execute("INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)", [estId, burgersId, "X-Bacon Especial", "Pão brioche, blend 180g, cheddar e bacon crocante.", 32.90, "/assets/demo/x-bacon.jpg"]);
+    await connection.execute("INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)", [estId, drinksId, "Refrigerante Lata", "350ml bem gelado.", 7.00, "/assets/demo/refrigerante.jpg"]);
     await connection.execute("INSERT INTO neighborhoods (establishment_id, name, delivery_fee) VALUES (?, ?, ?)", [estId, "Centro", 5.00]);
     for (let i = 1; i <= 5; i++) await connection.execute("INSERT INTO tables (establishment_id, number) VALUES (?, ?)", [estId, i]);
     
@@ -378,20 +441,20 @@ async function initDatabase() {
   connection.release();
   console.log("Database initialized");
   } catch (error) {
-    console.error("Database initialization error:", error);
-    process.exit(1);
+    console.warn("[AI Studio] MySQL not connected — falling back to in-memory mock store:", (error as any)?.message || error);
+    pool = createMockPool();
   }
 }
 
-initDatabase();
+await initDatabase();
 
 const app = express();
 app.use(express.json());
 
 // JWT Configuration
 const JWT_SECRET = process.env.JWT_SECRET || "superadmin-jwt-secret-change-in-production";
-const SUPERADMIN_USER = process.env.SUPERADMIN_USER || "superadmin";
-const SUPERADMIN_PASSWORD = process.env.SUPERADMIN_PASSWORD || "admin123";
+const SUPERADMIN_USER = (process.env.SUPERADMIN_USER || "").trim() || "superadmin";
+const SUPERADMIN_PASSWORD = (process.env.SUPERADMIN_PASSWORD || "").trim() || "admin123";
 
 // SuperAdmin Auth Middleware
 const superAdminAuthMiddleware = (req: any, res: any, next: any) => {
@@ -419,9 +482,12 @@ app.post("/api/superadmin/login", async (req, res) => {
     return res.status(400).json({ error: "Username e password são obrigatórios." });
   }
   
-  if (username === SUPERADMIN_USER && password === SUPERADMIN_PASSWORD) {
+  const cleanUser = String(username).trim();
+  const cleanPass = String(password).trim();
+
+  if (cleanUser === SUPERADMIN_USER && cleanPass === SUPERADMIN_PASSWORD) {
     const token = jwt.sign(
-      { role: "superadmin", username },
+      { role: "superadmin", username: cleanUser },
       JWT_SECRET,
       { expiresIn: "24h" }
     );
@@ -466,6 +532,22 @@ const getEstablishment = async (req: any, res: any, next: any) => {
   next();
 };
 
+async function getEstablishmentPlanFeatures(establishment: any) {
+  const planId = establishment?.plan_id || 1;
+  const [rows] = await pool.execute("SELECT * FROM plans WHERE id = ?", [planId]);
+  const plan = (rows as any[])[0];
+  const isPaidOrPremium = plan ? (parseFloat(plan.price) > 0 || Number(plan.id) !== 1) : Number(planId) !== 1;
+  return {
+    plan,
+    isPremium: isPaidOrPremium,
+    maxProducts: Number(plan?.max_products) || (isPaidOrPremium ? 100 : 10),
+    enableAi: plan ? Number(plan.enable_ai) === 1 : isPaidOrPremium,
+    enableReservations: plan ? Number(plan.enable_reservations) === 1 : isPaidOrPremium,
+    enableAutomation: plan ? Number(plan.enable_automation ?? 1) === 1 : true,
+    enableTables: plan?.enable_tables !== undefined ? Number(plan.enable_tables) === 1 : isPaidOrPremium,
+  };
+}
+
 // Função para normalizar número de WhatsApp (formato internacional 55XXXXXXXXXXX)
 function normalizeWhatsApp(phone: string): string {
   if (!phone) return '';
@@ -485,19 +567,125 @@ function normalizeWhatsApp(phone: string): string {
   return cleaned;
 }
 
-// Função para enviar WhatsApp via Evolution API
-async function sendWhatsAppMessage(phone: string, message: string) {
+// Helpers de Configurações da Plataforma & Evolution API v2
+async function getPlatformSettings(): Promise<Record<string, string>> {
   try {
-    const evolutionUrl = process.env.EVOLUTION_URL || 'https://to-ligado-evolution-api.m6tens.easypanel.host';
-    const evolutionKey = process.env.EVOLUTION_KEY || '5BE128D18942-4B09-8AF8-454ADEEB06B1';
-    const instance = process.env.EVOLUTION_INSTANCE || 'corretinho';
-    
-    // Normalizar telefone
+    const [rows] = await pool.execute("SELECT `key`, value FROM platform_settings");
+    const obj: Record<string, string> = {};
+    for (const r of rows as any[]) {
+      obj[r.key] = r.value ?? "";
+    }
+    return obj;
+  } catch {
+    return {};
+  }
+}
+
+async function setPlatformSetting(key: string, value: string) {
+  await pool.execute(
+    "INSERT INTO platform_settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = ?",
+    [key, value, value]
+  );
+}
+
+async function getEstablishmentSettings(establishmentId: number): Promise<Record<string, string>> {
+  try {
+    const [rows] = await pool.execute("SELECT `key`, value FROM settings WHERE establishment_id = ?", [establishmentId]);
+    const obj: Record<string, string> = {};
+    for (const r of rows as any[]) {
+      obj[r.key] = r.value ?? "";
+    }
+    return obj;
+  } catch {
+    return {};
+  }
+}
+
+async function evolutionRequest(apiUrl: string, apiKey: string, endpoint: string, method = "GET", body?: any) {
+  const base = apiUrl.replace(/\/+$/, "");
+  const res = await fetch(`${base}${endpoint}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      apikey: apiKey,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(8000),
+  });
+  const text = await res.text();
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { raw: text };
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
+async function connectOrCreateEvolutionInstance(apiUrl: string, apiKey: string, instanceName: string) {
+  // 1. Verificar estado atual
+  const stateRes = await evolutionRequest(apiUrl, apiKey, `/instance/connectionState/${encodeURIComponent(instanceName)}`);
+  const currentState = stateRes.data?.instance?.state || stateRes.data?.state;
+  if (stateRes.ok && currentState === "open") {
+    return { connected: true, state: "open", instance: instanceName, qrcode_base64: null, code: null, pairing_code: null };
+  }
+
+  // 2. Tentar conectar instância existente
+  const connectRes = await evolutionRequest(apiUrl, apiKey, `/instance/connect/${encodeURIComponent(instanceName)}`);
+  if (connectRes.ok && (connectRes.data?.base64 || connectRes.data?.code || connectRes.data?.pairingCode || connectRes.data?.instance)) {
+    const st = connectRes.data?.instance?.state || connectRes.data?.state || "connecting";
+    return {
+      connected: st === "open",
+      state: st,
+      instance: instanceName,
+      qrcode_base64: connectRes.data?.base64 || connectRes.data?.qrcode?.base64 || null,
+      code: connectRes.data?.code || connectRes.data?.qrcode?.code || null,
+      pairing_code: connectRes.data?.pairingCode || connectRes.data?.qrcode?.pairingCode || null,
+    };
+  }
+
+  // 3. Criar nova instância caso não exista
+  const createRes = await evolutionRequest(apiUrl, apiKey, `/instance/create`, "POST", {
+    instanceName,
+    qrcode: true,
+    integration: "WHATSAPP-BAILEYS",
+  });
+
+  if (!createRes.ok) {
+    throw new Error(createRes.data?.message || createRes.data?.error || `Erro na Evolution API (${createRes.status})`);
+  }
+
+  return {
+    connected: false,
+    state: "connecting",
+    instance: instanceName,
+    qrcode_base64: createRes.data?.qrcode?.base64 || createRes.data?.base64 || null,
+    code: createRes.data?.qrcode?.code || createRes.data?.code || null,
+    pairing_code: createRes.data?.qrcode?.pairingCode || createRes.data?.pairingCode || null,
+  };
+}
+
+// Função para enviar WhatsApp via Evolution API (suporta instância global/SuperAdmin ou específica da loja)
+async function sendWhatsAppMessage(
+  phone: string,
+  message: string,
+  options?: { apiUrl?: string; apiKey?: string; instance?: string; useSuperAdmin?: boolean }
+) {
+  try {
+    const ps = await getPlatformSettings();
+    const evolutionUrl = options?.apiUrl || ps.evolution_global_url || process.env.EVOLUTION_URL || process.env.EVOLUTION_API_URL || '';
+    const evolutionKey = options?.apiKey || ps.evolution_global_key || process.env.EVOLUTION_KEY || process.env.EVOLUTION_API_KEY || '';
+    const instance = options?.instance || (options?.useSuperAdmin ? ps.superadmin_evolution_instance : '') || ps.superadmin_evolution_instance || process.env.EVOLUTION_INSTANCE || '';
+
+    if (!evolutionUrl || !evolutionKey || !instance || !phone) {
+      return false;
+    }
+
     const formattedPhone = normalizeWhatsApp(phone);
-    
-    console.log(`📱 Enviando WhatsApp para ${formattedPhone}...`);
-    
-    const response = await fetch(`${evolutionUrl}/message/sendText/${instance}`, {
+    console.log(`📱 Enviando WhatsApp (${instance}) para ${formattedPhone}...`);
+
+    const base = evolutionUrl.replace(/\/+$/, "");
+    const response = await fetch(`${base}/message/sendText/${encodeURIComponent(instance)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -505,53 +693,79 @@ async function sendWhatsAppMessage(phone: string, message: string) {
       },
       body: JSON.stringify({
         number: formattedPhone,
+        text: message,
         textMessage: { text: message }
-      })
+      }),
+      signal: AbortSignal.timeout(8000),
     });
-    
+
     if (response.ok) {
       console.log(`✅ WhatsApp enviado para ${formattedPhone}`);
+      return true;
     } else {
       const errorText = await response.text();
       console.error(`❌ Erro ao enviar WhatsApp (${response.status}):`, errorText);
+      return false;
     }
   } catch (error) {
     console.error('❌ Erro ao enviar WhatsApp:', error);
+    return false;
   }
 }
 
-// Routes (abbreviated for brevity - same logic as SQLite version but with pool.execute)
+async function sendEstablishmentWhatsApp(establishmentId: number, phone: string, message: string) {
+  const es = await getEstablishmentSettings(establishmentId);
+  if (es.evolution_enabled !== '1' || !es.evolution_instance) {
+    return false;
+  }
+  return sendWhatsAppMessage(phone, message, {
+    apiUrl: es.evolution_api_url || undefined,
+    apiKey: es.evolution_api_key || undefined,
+    instance: es.evolution_instance,
+  });
+}
+
+async function notifySuperAdmin(type: 'signup' | 'payment' | 'renewal', message: string) {
+  const ps = await getPlatformSettings();
+  if (!ps.superadmin_notify_whatsapp) return false;
+  if (type === 'signup' && ps.superadmin_notify_new_signup === '0') return false;
+  if (type === 'payment' && ps.superadmin_notify_payment === '0') return false;
+  if (type === 'renewal' && ps.superadmin_notify_renewal === '0') return false;
+  return sendWhatsAppMessage(ps.superadmin_notify_whatsapp, message, { useSuperAdmin: true });
+}
+
+// Routes
 app.post("/api/public/register", async (req, res) => {
   const { name, slug, owner_whatsapp, password } = req.body;
-  
-  // Normalizar WhatsApp para formato internacional
   const normalizedWhatsapp = normalizeWhatsApp(owner_whatsapp);
-  
+
   try {
-    const [result] = await pool.execute("INSERT INTO establishments (name, slug, owner_whatsapp, password, plan_id) VALUES (?, ?, ?, ?, ?)", [name, slug, normalizedWhatsapp, password, 1]);
-    
-    // TODO: Enviar WhatsApp quando tiver instância dedicada do MaisQueCardapio
-    // const welcomeMessage = `🎉 *Bem-vindo ao MaisQueCardapio!*
-// 
-// Seu cardápio digital foi criado com sucesso!
-// 
-// 📋 *Seus dados de acesso:*
-// 
-// 🌐 *URL do Cardápio:*
-// maisquecardapio.to-ligado.com/e/${slug}
-// 
-// 📱 *WhatsApp:* ${normalizedWhatsapp}
-// 🔑 *Senha:* ${password}
-// 
-// ---
-// 💡 *Dica:* Salve esta mensagem!
-// 
-// Acesse seu painel para configurar produtos, categorias e muito mais!
-// 
-// _Equipe MaisQueCardapio | To-Ligado.com_`;
-    // sendWhatsAppMessage(normalizedWhatsapp, welcomeMessage);
-    
-    res.json({ id: (result as any).insertId, slug, whatsapp: normalizedWhatsapp });
+    const [result] = await pool.execute(
+      "INSERT INTO establishments (name, slug, owner_whatsapp, password, plan_id) VALUES (?, ?, ?, ?, ?)",
+      [name, slug, normalizedWhatsapp, password, 1]
+    );
+    const estId = (result as any).insertId;
+
+    const defaults = [
+      [estId, "store_name", name],
+      [estId, "whatsapp_kitchen", normalizedWhatsapp],
+      [estId, "whatsapp_cashier", normalizedWhatsapp],
+      [estId, "primary_color", "#f97316"],
+      [estId, "is_open", "1"],
+    ];
+    for (const [id, k, v] of defaults) {
+      await pool.execute("INSERT INTO settings (establishment_id, `key`, value) VALUES (?, ?, ?)", [id, k, v]);
+    }
+
+    const welcomeMessage = `🎉 *Bem-vindo ao MaisQueCardapio!*\n\nSeu cardápio digital foi criado com sucesso!\n\n🌐 *URL:* ${BASE_URL}/e/${slug}\n📱 *WhatsApp:* ${normalizedWhatsapp}\n\nAcesse seu painel para configurar produtos, categorias e conectar seu WhatsApp via QR Code!`;
+    await sendWhatsAppMessage(normalizedWhatsapp, welcomeMessage, { useSuperAdmin: true });
+
+    await notifySuperAdmin(
+      'signup',
+      `🆕 *Nova Contratação / Cadastro*\n\n🏪 *Loja:* ${name}\n🔗 *Slug:* /e/${slug}\n📱 *WhatsApp:* ${normalizedWhatsapp}\n📋 *Plano:* Gratuito`
+    );
+
+    res.json({ id: estId, slug, whatsapp: normalizedWhatsapp });
   } catch (e) { res.status(400).json({ error: "Slug em uso" }); }
 });
 
@@ -595,9 +809,44 @@ app.post("/api/public/login", async (req, res) => {
 });
 
 app.get("/api/public/establishments/:slug", async (req, res) => {
-  const [rows] = await pool.execute("SELECT id, name, slug, status FROM establishments WHERE slug = ?", [req.params.slug]);
-  if (!(rows as any)[0]) return res.status(404).json({ error: "Não encontrado" });
-  res.json((rows as any)[0]);
+  const [rows] = await pool.execute("SELECT id, name, slug, status, plan_id FROM establishments WHERE slug = ?", [req.params.slug]);
+  const est = (rows as any)[0];
+  if (!est) return res.status(404).json({ error: "Não encontrado" });
+  const features = await getEstablishmentPlanFeatures(est);
+  res.json({
+    id: est.id,
+    name: est.name,
+    slug: est.slug,
+    status: est.status,
+    plan_id: est.plan_id,
+    enable_tables: features.enableTables ? 1 : 0,
+    enable_automation: features.enableAutomation ? 1 : 0,
+    enable_reservations: features.enableReservations ? 1 : 0,
+  });
+});
+
+app.get("/api/public/plans", async (req, res) => {
+  try {
+    const [rows] = await pool.execute("SELECT * FROM plans");
+    const plans = (rows as any[])
+      .map((p) => {
+        const isPaidOrPremium = parseFloat(p.price) > 0 || Number(p.id) !== 1;
+        return {
+          id: p.id,
+          name: p.name,
+          price: parseFloat(p.price) || 0,
+          max_products: Number(p.max_products) || 0,
+          enable_reservations: Number(p.enable_reservations) === 1 ? 1 : 0,
+          enable_automation: Number(p.enable_automation ?? 1) === 1 ? 1 : 0,
+          enable_tables: Number(p.enable_tables ?? (isPaidOrPremium ? 1 : 0)) === 1 ? 1 : 0,
+        };
+      })
+      .sort((a, b) => a.price - b.price);
+    res.json(plans);
+  } catch (error) {
+    console.error("Erro ao buscar planos públicos:", error);
+    res.status(500).json({ error: "Erro ao buscar planos" });
+  }
 });
 
 app.get("/api/superadmin/establishments", async (req, res) => {
@@ -632,10 +881,19 @@ app.get("/api/superadmin/plans", async (req, res) => {
 
 app.post("/api/superadmin/plans", async (req, res) => {
   try {
-    const { name, price, max_products, enable_ai, enable_reservations, enable_automation } = req.body;
+    const { name, price, max_products, enable_ai, enable_reservations, enable_automation, enable_tables } = req.body;
+    const isPaid = parseFloat(price) > 0;
     const [result] = await pool.execute(
-      "INSERT INTO plans (name, price, max_products, enable_ai, enable_reservations, enable_automation) VALUES (?, ?, ?, ?, ?, ?)",
-      [name, price, max_products || 0, enable_ai || false, enable_reservations || false, enable_automation || false]
+      "INSERT INTO plans (name, price, max_products, enable_ai, enable_reservations, enable_automation, enable_tables) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [
+        name,
+        price,
+        max_products || 0,
+        enable_ai ? 1 : 0,
+        enable_reservations ? 1 : 0,
+        enable_automation !== undefined ? (enable_automation ? 1 : 0) : 1,
+        enable_tables !== undefined ? (enable_tables ? 1 : 0) : (isPaid ? 1 : 0)
+      ]
     );
     res.json({ id: (result as any).insertId, success: true });
   } catch (error) {
@@ -646,10 +904,20 @@ app.post("/api/superadmin/plans", async (req, res) => {
 
 app.put("/api/superadmin/plans/:id", async (req, res) => {
   try {
-    const { name, price, max_products, enable_ai, enable_reservations, enable_automation } = req.body;
+    const { name, price, max_products, enable_ai, enable_reservations, enable_automation, enable_tables } = req.body;
+    const isPaid = parseFloat(price) > 0 || Number(req.params.id) !== 1;
     await pool.execute(
-      "UPDATE plans SET name = ?, price = ?, max_products = ?, enable_ai = ?, enable_reservations = ?, enable_automation = ? WHERE id = ?",
-      [name, price, max_products, enable_ai, enable_reservations, enable_automation, req.params.id]
+      "UPDATE plans SET name = ?, price = ?, max_products = ?, enable_ai = ?, enable_reservations = ?, enable_automation = ?, enable_tables = ? WHERE id = ?",
+      [
+        name,
+        price,
+        max_products,
+        enable_ai ? 1 : 0,
+        enable_reservations ? 1 : 0,
+        enable_automation !== undefined ? (enable_automation ? 1 : 0) : 1,
+        enable_tables !== undefined ? (enable_tables ? 1 : 0) : (isPaid ? 1 : 0),
+        req.params.id
+      ]
     );
     res.json({ success: true });
   } catch (error) {
@@ -781,6 +1049,34 @@ app.post("/api/e/upload/logo", upload.single('logo'), (req: any, res) => {
   }
 });
 
+// Upload de capa / banner do estabelecimento
+app.post("/api/e/upload/banner", upload.single('banner'), (req: any, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Nenhum arquivo enviado" });
+    }
+    const bannerUrl = `/uploads/${req.file.filename}`;
+    res.json({
+      success: true,
+      banner_url: bannerUrl,
+      filename: req.file.filename
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao fazer upload da capa" });
+  }
+});
+
+app.post("/api/e/categories", async (req: any, res) => {
+  const { name } = req.body;
+  const [result] = await pool.execute("INSERT INTO categories (establishment_id, name) VALUES (?, ?)", [req.establishment.id, name]);
+  res.json({ id: (result as any).insertId });
+});
+
+app.delete("/api/e/categories/:id", async (req: any, res) => {
+  await pool.execute("DELETE FROM categories WHERE id = ? AND establishment_id = ?", [req.params.id, req.establishment.id]);
+  res.json({ success: true });
+});
+
 app.get("/api/e/products", async (req: any, res) => {
   const [rows] = await pool.execute("SELECT * FROM products WHERE establishment_id = ?", [req.establishment.id]);
   res.json(rows);
@@ -799,14 +1095,125 @@ app.post("/api/e/products", async (req: any, res) => {
   res.json({ id: (result as any).insertId });
 });
 
+app.put("/api/e/products/:id", async (req: any, res) => {
+  const { category_id, name, description, price, image_url, is_available } = req.body;
+  await pool.execute(
+    "UPDATE products SET category_id = ?, name = ?, description = ?, price = ?, image_url = ?, is_available = ? WHERE id = ? AND establishment_id = ?",
+    [category_id, name, description, price, image_url, is_available ? 1 : 0, req.params.id, req.establishment.id]
+  );
+  res.json({ success: true });
+});
+
+app.delete("/api/e/products/:id", async (req: any, res) => {
+  await pool.execute("DELETE FROM products WHERE id = ? AND establishment_id = ?", [req.params.id, req.establishment.id]);
+  res.json({ success: true });
+});
+
 app.get("/api/e/neighborhoods", async (req: any, res) => {
   const [rows] = await pool.execute("SELECT * FROM neighborhoods WHERE establishment_id = ?", [req.establishment.id]);
   res.json(rows);
 });
 
+app.post("/api/e/neighborhoods", async (req: any, res) => {
+  const { name, delivery_fee } = req.body;
+  const [result] = await pool.execute("INSERT INTO neighborhoods (establishment_id, name, delivery_fee) VALUES (?, ?, ?)", [req.establishment.id, name, delivery_fee]);
+  res.json({ id: (result as any).insertId });
+});
+
+app.delete("/api/e/neighborhoods/:id", async (req: any, res) => {
+  await pool.execute("DELETE FROM neighborhoods WHERE id = ? AND establishment_id = ?", [req.params.id, req.establishment.id]);
+  res.json({ success: true });
+});
+
 app.get("/api/e/tables", async (req: any, res) => {
   const [rows] = await pool.execute("SELECT * FROM tables WHERE establishment_id = ? ORDER BY number", [req.establishment.id]);
   res.json(rows);
+});
+
+app.post("/api/e/tables", async (req: any, res) => {
+  const features = await getEstablishmentPlanFeatures(req.establishment);
+  if (!features.enableTables) {
+    return res.status(403).json({
+      error: "Pedidos na mesa (QR Code), comandas abertas e impressão de cupom são exclusivos do Plano Premium.",
+      upgradeRequired: true
+    });
+  }
+  const { number } = req.body;
+  try {
+    const [result] = await pool.execute("INSERT INTO tables (establishment_id, number) VALUES (?, ?)", [req.establishment.id, number]);
+    res.json({ id: (result as any).insertId });
+  } catch (e) {
+    res.status(400).json({ error: "Mesa já existe" });
+  }
+});
+
+app.delete("/api/e/tables/:id", async (req: any, res) => {
+  const features = await getEstablishmentPlanFeatures(req.establishment);
+  if (!features.enableTables) {
+    return res.status(403).json({
+      error: "Gerenciamento de mesas (QR Code) é exclusivo do Plano Premium.",
+      upgradeRequired: true
+    });
+  }
+  await pool.execute("DELETE FROM tables WHERE id = ? AND establishment_id = ?", [req.params.id, req.establishment.id]);
+  res.json({ success: true });
+});
+
+app.get("/api/e/commands", async (req: any, res) => {
+  const [rows] = await pool.execute(
+    "SELECT c.*, t.number as table_number FROM commands c LEFT JOIN tables t ON c.table_id = t.id WHERE c.status = 'open' AND c.establishment_id = ? ORDER BY c.created_at DESC",
+    [req.establishment.id]
+  );
+  res.json(rows);
+});
+
+app.post("/api/e/commands", async (req: any, res) => {
+  const features = await getEstablishmentPlanFeatures(req.establishment);
+  if (!features.enableTables) {
+    return res.status(403).json({
+      error: "Comandas abertas são exclusivas do Plano Premium.",
+      upgradeRequired: true
+    });
+  }
+  const { table_id, waiter_name } = req.body;
+  if (table_id) {
+    const [existingRows] = await pool.execute(
+      "SELECT id FROM commands WHERE establishment_id = ? AND table_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1",
+      [req.establishment.id, table_id]
+    );
+    const existing = (existingRows as any[])[0];
+    if (existing) {
+      return res.json({ id: existing.id, alreadyOpen: true });
+    }
+  }
+  const [result] = await pool.execute(
+    "INSERT INTO commands (establishment_id, table_id, waiter_name) VALUES (?, ?, ?)",
+    [req.establishment.id, table_id || null, waiter_name || 'Balcão']
+  );
+  res.json({ id: (result as any).insertId });
+});
+
+app.put("/api/e/commands/:id", async (req: any, res) => {
+  const features = await getEstablishmentPlanFeatures(req.establishment);
+  if (!features.enableTables) {
+    return res.status(403).json({
+      error: "Comandas abertas são exclusivas do Plano Premium.",
+      upgradeRequired: true
+    });
+  }
+  const { status, order_ids, mark_orders_paid } = req.body;
+  await pool.execute("UPDATE commands SET status = ? WHERE id = ? AND establishment_id = ?", [status, req.params.id, req.establishment.id]);
+  if (status === 'closed' && mark_orders_paid && Array.isArray(order_ids)) {
+    for (const orderId of order_ids) {
+      if (orderId) {
+        await pool.execute(
+          "UPDATE orders SET payment_status = 'paid', updated_at = NOW() WHERE id = ? AND establishment_id = ?",
+          [orderId, req.establishment.id]
+        );
+      }
+    }
+  }
+  res.json({ success: true });
 });
 
 app.get("/api/e/orders", async (req: any, res) => {
@@ -842,6 +1249,76 @@ app.get("/api/e/orders/:id", async (req: any, res) => {
   res.json({ ...(rows as any)[0], history });
 });
 
+// Helper para gerar Checkout Link InfinitePay de um pedido da loja
+async function createOrderInfinitePayCheckout(
+  establishment: { id: number; slug: string; name?: string },
+  order: { id: number; total: any },
+  requestOrigin: string
+) {
+  const es = await getEstablishmentSettings(establishment.id);
+  const handle = (es.infinitepay_handle || '').replace(/^\$/, '').trim();
+  if (es.infinitepay_enabled !== '1' || !handle) {
+    throw new Error('InfinitePay não está configurada para esta loja.');
+  }
+
+  const [existingRows] = await pool.execute(
+    `SELECT * FROM payments WHERE order_id = ? AND payment_method = 'infinitepay' ORDER BY id DESC LIMIT 1`,
+    [order.id]
+  );
+  const existing = (existingRows as any[])[0];
+  if (existing && existing.checkout_url && existing.status === 'pending') {
+    return {
+      checkout_url: existing.checkout_url,
+      order_nsu: existing.external_id || `ORDER-${order.id}`,
+    };
+  }
+
+  const amount = parseFloat(String(order.total)) || 0;
+  const priceInCents = Math.max(100, Math.round(amount * 100));
+  const orderNsu = `ORDER-${order.id}`;
+  const redirectUrl = `${requestOrigin}/e/${establishment.slug}/pedido/${order.id}?infinitepay=returned`;
+  const webhookUrl = `${BASE_URL}/api/webhook/infinitepay`;
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (es.infinitepay_api_key) {
+    headers['X-Api-Key'] = es.infinitepay_api_key;
+  }
+
+  const ipRes = await fetch('https://api.infinitepay.io/invoices/public/checkout/links', {
+    method: 'POST',
+    headers,
+    signal: AbortSignal.timeout(10000),
+    body: JSON.stringify({
+      handle,
+      items: [
+        {
+          description: `${es.store_name || establishment.name || 'Pedido'} - Pedido #${order.id}`,
+          price: priceInCents,
+          quantity: 1,
+        },
+      ],
+      order_nsu: orderNsu,
+      redirect_url: redirectUrl,
+      webhook_url: webhookUrl,
+    }),
+  });
+
+  const ipData: any = await ipRes.json().catch(() => ({}));
+  const checkoutUrl = ipData?.url || ipData?.checkout_url || ipData?.link;
+
+  if (!ipRes.ok || !checkoutUrl) {
+    throw new Error(ipData?.message || ipData?.error || 'Falha ao gerar link InfinitePay. Verifique a InfiniteTag/API Key da loja.');
+  }
+
+  await pool.execute(
+    `INSERT INTO payments (order_id, establishment_id, amount, payment_method, external_id, checkout_url, notes, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
+    [order.id, establishment.id, amount, 'infinitepay', orderNsu, checkoutUrl, `Pedido #${order.id}`]
+  );
+
+  return { checkout_url: checkoutUrl, order_nsu: orderNsu };
+}
+
 // Criar pedido com dados completos
 app.post("/api/e/orders", async (req: any, res) => {
   try {
@@ -861,6 +1338,23 @@ app.post("/api/e/orders", async (req: any, res) => {
       items_text,
       notes
     } = req.body;
+
+    if (type === 'table') {
+      const features = await getEstablishmentPlanFeatures(req.establishment);
+      if (!features.enableTables) {
+        return res.status(403).json({
+          error: 'Pedidos na mesa via QR Code são exclusivos do Plano Premium.',
+          upgradeRequired: true
+        });
+      }
+    }
+
+    if (payment_method === 'infinitepay') {
+      const esCheck = await getEstablishmentSettings(req.establishment.id);
+      if (esCheck.infinitepay_enabled !== '1' || !(esCheck.infinitepay_handle || '').trim()) {
+        return res.status(400).json({ error: 'InfinitePay não está configurada para esta loja.' });
+      }
+    }
     
     // Gerar PIX Code se for pagamento PIX
     let pixCode = null;
@@ -874,18 +1368,20 @@ app.post("/api/e/orders", async (req: any, res) => {
         "SELECT value FROM settings WHERE establishment_id = ? AND `key` = 'pix_key'",
         [req.establishment.id]
       );
-    const pixKey = (settingsRows as any)[0]?.value || '';
-    
-    if (pixKey && total) {
-      // Gerar BR Code (copia e cola)
-      const txid = `ORDER${Date.now()}`.substring(0, 25);
-      pixCode = generatePixCode(pixKey, total, `Pedido #${Date.now()}`, txid);
-      pixQrcode = pixCode; // QR Code será gerado no frontend
-      pixExpiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutos
+      const pixKey = (settingsRows as any)[0]?.value || '';
+      
+      if (pixKey && total) {
+        // Gerar BR Code (copia e cola)
+        const txid = `ORDER${Date.now()}`.substring(0, 25);
+        pixCode = generatePixCode(pixKey, total, `Pedido #${Date.now()}`, txid);
+        pixQrcode = pixCode; // QR Code será gerado no frontend
+        pixExpiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutos
+      }
+    } else if (payment_method === 'entrega') {
+      paymentStatus = 'pending_delivery';
+    } else if (payment_method === 'comanda') {
+      paymentStatus = 'pending_comanda';
     }
-  } else if (payment_method === 'entrega') {
-    paymentStatus = 'pending_delivery';
-  }
   
   const [result] = await pool.execute(`
     INSERT INTO orders (
@@ -954,12 +1450,50 @@ app.post("/api/e/orders", async (req: any, res) => {
     ]);
   }
   
+  // Notificar cliente / loja via instância Evolution da própria loja
+  const es = await getEstablishmentSettings(req.establishment.id);
+  if (es.evolution_enabled === '1' && es.evolution_instance) {
+    const typeLabel = type === 'table' ? 'Mesa' : type === 'pickup' ? 'Balcão / Retirada' : 'Delivery';
+    const paymentLabel = payment_method === 'comanda'
+      ? 'Adicionar à Comanda (pagar ao final)'
+      : payment_method === 'infinitepay'
+        ? 'InfinitePay'
+        : (payment_method || 'N/A');
+    const targetNumber = type === 'table' || type === 'pickup' ? (es.whatsapp_kitchen || es.whatsapp_cashier) : es.whatsapp_cashier;
+    const orderMsg = `🛒 *Novo Pedido #${orderId}*\n\n👤 *Cliente:* ${customer_name || 'N/A'}\n📦 *Tipo:* ${typeLabel}\n\n*Itens:*\n${items_text || ''}\n\n💰 *Total:* R$ ${(parseFloat(String(total)) || 0).toFixed(2)}\n💳 *Pagamento:* ${paymentLabel}`;
+    if (targetNumber) {
+      await sendEstablishmentWhatsApp(req.establishment.id, targetNumber, orderMsg);
+    }
+  }
+
+  let checkoutUrl: string | null = null;
+  let orderNsu: string | null = null;
+  let checkoutError: string | null = null;
+  if (payment_method === 'infinitepay') {
+    try {
+      const requestOrigin = req.headers.origin || BASE_URL;
+      const ipCheckout = await createOrderInfinitePayCheckout(
+        req.establishment,
+        { id: orderId, total: total ?? 0 },
+        requestOrigin
+      );
+      checkoutUrl = ipCheckout.checkout_url;
+      orderNsu = ipCheckout.order_nsu;
+    } catch (ipErr: any) {
+      checkoutError = ipErr?.message || 'Erro ao gerar link InfinitePay';
+      console.warn('Erro ao gerar InfinitePay do pedido:', checkoutError);
+    }
+  }
+
   res.json({ 
     id: orderId, 
     pix_code: pixCode,
     pix_qrcode: pixQrcode,
     pix_expires_at: pixExpiresAt,
-    payment_status: paymentStatus
+    payment_status: paymentStatus,
+    checkout_url: checkoutUrl,
+    order_nsu: orderNsu,
+    checkout_error: checkoutError
   });
   } catch (error) {
     console.error('Erro ao criar pedido:', error);
@@ -1013,7 +1547,7 @@ Acompanhe seu pedido em nosso cardápio.
 
 _Obrigado pela preferência!_`;
     
-    await sendWhatsAppMessage(order.customer_phone, message);
+    await sendEstablishmentWhatsApp(req.establishment.id, order.customer_phone, message);
   }
   
   res.json({ success: true, message: "Pagamento confirmado!" });
@@ -1049,8 +1583,8 @@ app.put("/api/e/orders/:id/status", async (req: any, res) => {
     const statusMessages: Record<string, string> = {
       'confirmed': '✅ Seu pedido foi confirmado!',
       'preparing': '👨‍🍳 Seu pedido está sendo preparado!',
-      'delivering': '🛵 Seu pedido está a caminho!',
-      'completed': '🎉 Pedido entregue! Obrigado!',
+      'delivering': order.type === 'pickup' ? '🛍️ Seu pedido está pronto para retirada no balcão!' : '🛵 Seu pedido está a caminho!',
+      'completed': order.type === 'pickup' ? '🎉 Pedido retirado! Obrigado!' : '🎉 Pedido entregue! Obrigado!',
       'cancelled': '❌ Seu pedido foi cancelado.'
     };
     
@@ -1061,7 +1595,7 @@ app.put("/api/e/orders/:id/status", async (req: any, res) => {
 
 ${notes || ''}`;
     
-    await sendWhatsAppMessage(order.customer_phone, message);
+    await sendEstablishmentWhatsApp(req.establishment.id, order.customer_phone, message);
   }
   
   res.json({ success: true });
@@ -1095,6 +1629,140 @@ app.get("/api/public/orders/:phone", async (req, res) => {
   `, [estId, phone]);
   
   res.json(rows);
+});
+
+// Resumo da comanda aberta de uma mesa (público)
+async function getPublicTableComandaSummary(establishmentId: number, tableNumber: number) {
+  const [cmdRows] = await pool.execute(
+    "SELECT c.*, t.number as table_number FROM commands c LEFT JOIN tables t ON c.table_id = t.id WHERE c.status = 'open' AND c.establishment_id = ? ORDER BY c.created_at DESC",
+    [establishmentId]
+  );
+  const openCmd = (cmdRows as any[]).find((c) => Number(c.table_number) === tableNumber) || null;
+
+  const [orderRows] = await pool.execute(
+    "SELECT * FROM orders WHERE establishment_id = ? ORDER BY created_at DESC LIMIT 100",
+    [establishmentId]
+  );
+
+  const cmdStartMs = openCmd ? new Date(openCmd.created_at).getTime() - 60000 : null;
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const matchingOrders = (orderRows as any[]).filter((o) => {
+    if (o.type !== 'table' || o.customer_name !== `Mesa ${tableNumber}`) return false;
+    if (o.status === 'cancelled' || o.status === 'cancelado') return false;
+    if (cmdStartMs !== null) {
+      return new Date(o.created_at).getTime() >= cmdStartMs;
+    }
+    const orderDay = new Date(o.created_at).toISOString().split('T')[0];
+    return orderDay === todayStr && o.payment_status !== 'paid' && o.payment_status !== 'pago';
+  });
+
+  const total = matchingOrders.reduce((acc, o) => acc + (parseFloat(String(o.total)) || 0), 0);
+  const unpaidTotal = matchingOrders
+    .filter((o) => o.payment_status !== 'paid' && o.payment_status !== 'pago')
+    .reduce((acc, o) => acc + (parseFloat(String(o.total)) || 0), 0);
+
+  return {
+    table_number: tableNumber,
+    has_open_command: Boolean(openCmd),
+    command_id: openCmd?.id || null,
+    bill_requested_at: openCmd?.bill_requested_at || null,
+    orders_count: matchingOrders.length,
+    total,
+    unpaid_total: unpaidTotal,
+    orders: matchingOrders.map((o) => ({
+      id: o.id,
+      total: parseFloat(String(o.total)) || 0,
+      status: o.status,
+      payment_method: o.payment_method,
+      payment_status: o.payment_status,
+      items_text: o.items_text,
+      created_at: o.created_at,
+    })),
+  };
+}
+
+app.get("/api/public/tables/:tableNumber/summary", async (req, res) => {
+  const slug = req.headers['x-establishment-slug'];
+  const tableNum = parseInt(req.params.tableNumber, 10);
+  if (!slug || Number.isNaN(tableNum)) {
+    return res.status(400).json({ error: "Mesa ou estabelecimento inválido" });
+  }
+  try {
+    const [estRows] = await pool.execute("SELECT * FROM establishments WHERE slug = ?", [slug]);
+    const est = (estRows as any[])[0];
+    if (!est) return res.status(404).json({ error: "Estabelecimento não encontrado" });
+
+    const features = await getEstablishmentPlanFeatures(est);
+    if (!features.enableTables) {
+      return res.status(403).json({ error: "Comandas na mesa são exclusivas do Plano Premium.", upgradeRequired: true });
+    }
+
+    const summary = await getPublicTableComandaSummary(est.id, tableNum);
+    res.json(summary);
+  } catch (error) {
+    console.error("Erro ao buscar resumo da mesa:", error);
+    res.status(500).json({ error: "Erro ao consultar comanda da mesa" });
+  }
+});
+
+// Cliente solicita fechamento da conta da mesa (avisa caixa/garçom — fechamento real fica no Admin)
+app.post("/api/public/tables/:tableNumber/request-bill", async (req, res) => {
+  const slug = req.headers['x-establishment-slug'];
+  const tableNum = parseInt(req.params.tableNumber, 10);
+  if (!slug || Number.isNaN(tableNum)) {
+    return res.status(400).json({ error: "Mesa ou estabelecimento inválido" });
+  }
+  try {
+    const [estRows] = await pool.execute("SELECT * FROM establishments WHERE slug = ?", [slug]);
+    const est = (estRows as any[])[0];
+    if (!est) return res.status(404).json({ error: "Estabelecimento não encontrado" });
+
+    const features = await getEstablishmentPlanFeatures(est);
+    if (!features.enableTables) {
+      return res.status(403).json({ error: "Comandas na mesa são exclusivas do Plano Premium.", upgradeRequired: true });
+    }
+
+    let summary = await getPublicTableComandaSummary(est.id, tableNum);
+    let commandId = summary.command_id;
+
+    if (!commandId) {
+      const [tableRows] = await pool.execute("SELECT * FROM tables WHERE establishment_id = ? ORDER BY number", [est.id]);
+      const table = (tableRows as any[]).find((t) => Number(t.number) === tableNum);
+      if (table) {
+        const [ins] = await pool.execute(
+          "INSERT INTO commands (establishment_id, table_id, waiter_name) VALUES (?, ?, ?)",
+          [est.id, table.id, 'Cliente (Online)']
+        );
+        commandId = (ins as any).insertId;
+      }
+    }
+
+    if (commandId) {
+      await pool.execute(
+        "UPDATE commands SET bill_requested_at = NOW() WHERE id = ? AND establishment_id = ?",
+        [commandId, est.id]
+      );
+      summary = await getPublicTableComandaSummary(est.id, tableNum);
+    }
+
+    const es = await getEstablishmentSettings(est.id);
+    const cashierPhone = es.whatsapp_cashier || es.whatsapp_kitchen;
+    if (cashierPhone) {
+      const msg = `🧾 *Mesa ${tableNum} pediu a conta!*\n\n📋 *Pedidos na comanda:* ${summary.orders_count}\n💰 *Total acumulado:* R$ ${summary.total.toFixed(2)}\n💳 *Em aberto:* R$ ${summary.unpaid_total.toFixed(2)}\n\n_O cliente aguarda atendimento na mesa. Acesse a aba Comandas no painel para receber e fechar a conta._`;
+      await sendEstablishmentWhatsApp(est.id, cashierPhone, msg);
+    }
+
+    res.json({
+      success: true,
+      message: `Solicitação enviada! Um atendente irá até a Mesa ${tableNum}.`,
+      ...summary,
+      bill_requested_at: summary.bill_requested_at || new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Erro ao solicitar conta da mesa:", error);
+    res.status(500).json({ error: "Erro ao solicitar fechamento da conta" });
+  }
 });
 
 // ============================================
@@ -1135,9 +1803,9 @@ app.get("/api/public/orders/id/:id", async (req, res) => {
       SELECT * FROM order_history WHERE order_id = ? ORDER BY created_at DESC
     `, [id]);
     
-    // Buscar WhatsApp do admin (cashier ou kitchen)
+    // Buscar WhatsApp do admin e configuração InfinitePay da loja
     const [settingsRows] = await pool.execute(
-      "SELECT `key`, value FROM settings WHERE establishment_id = ? AND `key` IN ('whatsapp_cashier', 'whatsapp_kitchen')",
+      "SELECT `key`, value FROM settings WHERE establishment_id = ? AND `key` IN ('whatsapp_cashier', 'whatsapp_kitchen', 'infinitepay_enabled', 'infinitepay_handle')",
       [estId]
     );
     
@@ -1145,16 +1813,59 @@ app.get("/api/public/orders/id/:id", async (req, res) => {
     for (const row of settingsRows as any[]) {
       settings[row.key] = row.value;
     }
+
+    const [ipPayRows] = await pool.execute(
+      "SELECT checkout_url, external_id, status FROM payments WHERE order_id = ? AND payment_method = 'infinitepay' ORDER BY id DESC LIMIT 1",
+      [id]
+    );
+    const ipPay = (ipPayRows as any[])[0];
     
     res.json({ 
       ...order, 
       history: historyRows,
       establishment_name: estName,
-      admin_whatsapp: settings.whatsapp_cashier || settings.whatsapp_kitchen || ''
+      admin_whatsapp: settings.whatsapp_cashier || settings.whatsapp_kitchen || '',
+      store_infinitepay_enabled: settings.infinitepay_enabled === '1' && Boolean((settings.infinitepay_handle || '').trim()),
+      infinitepay_checkout_url: ipPay?.checkout_url || null,
+      infinitepay_order_nsu: ipPay?.external_id || `ORDER-${order.id}`
     });
   } catch (error) {
     console.error("Erro ao buscar pedido:", error);
     res.status(500).json({ error: "Erro ao buscar pedido" });
+  }
+});
+
+// Gerar ou recuperar link de checkout InfinitePay para um pedido da loja
+app.post("/api/public/orders/:id/infinitepay-checkout", async (req, res) => {
+  const { id } = req.params;
+  const slug = req.headers['x-establishment-slug'] as string;
+
+  try {
+    const [estRows] = await pool.execute("SELECT id, name, slug FROM establishments WHERE slug = ?", [slug]);
+    const est = (estRows as any[])[0];
+    if (!est) {
+      return res.status(404).json({ error: "Estabelecimento não encontrado" });
+    }
+
+    const [orderRows] = await pool.execute(
+      "SELECT * FROM orders WHERE id = ? AND establishment_id = ?",
+      [id, est.id]
+    );
+    const order = (orderRows as any[])[0];
+    if (!order) {
+      return res.status(404).json({ error: "Pedido não encontrado" });
+    }
+
+    if (order.payment_status === 'pago' || order.payment_status === 'paid') {
+      return res.status(400).json({ error: "Este pedido já está pago." });
+    }
+
+    const requestOrigin = req.headers.origin || BASE_URL;
+    const ipCheckout = await createOrderInfinitePayCheckout(est, order, requestOrigin);
+    res.json({ success: true, ...ipCheckout });
+  } catch (error: any) {
+    console.error("Erro ao gerar checkout InfinitePay do pedido:", error);
+    res.status(400).json({ error: error?.message || "Erro ao gerar link InfinitePay." });
   }
 });
 
@@ -1220,7 +1931,7 @@ app.post("/api/public/orders/:id/confirm-payment", async (req, res) => {
 
 _Acesse o painel para confirmar ou rejeitar o pagamento._`;
       
-      await sendWhatsAppMessage(adminPhone, message);
+      await sendEstablishmentWhatsApp(estId, adminPhone, message);
     }
     
     res.json({ success: true, message: "Pagamento confirmado! Aguarde a verificação." });
@@ -1373,7 +2084,7 @@ app.put("/api/e/orders/:id/status", async (req: any, res) => {
         message += `\n\n📝 *Motivo:* ${notes}`;
       }
       
-      await sendWhatsAppMessage(order.customer_phone, message);
+      await sendEstablishmentWhatsApp(req.establishment.id, order.customer_phone, message);
     }
     
     res.json({ success: true, message: "Status atualizado!" });
@@ -1540,12 +2251,17 @@ function calculateCRC16(str: string): string {
 app.get("/api/e/settings", async (req: any, res) => {
   const [rows] = await pool.execute("SELECT * FROM settings WHERE establishment_id = ?", [req.establishment.id]);
   const obj = (rows as any[]).reduce((a, c) => { a[c.key] = c.value; return a; }, {});
+  obj.has_infinitepay_api_key = obj.infinitepay_api_key ? '1' : '0';
+  delete obj.infinitepay_api_key;
   res.json(obj);
 });
 
 app.post("/api/e/settings", async (req: any, res) => {
   for (const [k, v] of Object.entries(req.body)) {
-    await pool.execute("INSERT INTO settings (establishment_id, `key`, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?", [req.establishment.id, k, v, v]);
+    if (k === 'has_infinitepay_api_key') continue;
+    if (k === 'infinitepay_api_key' && !String(v || '').trim()) continue;
+    const cleanVal = k === 'infinitepay_handle' ? String(v || '').replace(/^\$/, '').trim() : v;
+    await pool.execute("INSERT INTO settings (establishment_id, `key`, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?", [req.establishment.id, k, cleanVal, cleanVal]);
   }
   res.json({ success: true });
 });
@@ -1555,12 +2271,68 @@ app.get("/api/e/reservations", async (req: any, res) => {
   res.json(rows);
 });
 
+app.post("/api/e/reservations", async (req: any, res) => {
+  const { customer_name, customer_phone, table_id, reservation_time, guests } = req.body;
+  const [result] = await pool.execute(
+    "INSERT INTO reservations (establishment_id, customer_name, customer_phone, table_id, reservation_time, guests) VALUES (?, ?, ?, ?, ?, ?)",
+    [req.establishment.id, customer_name, customer_phone, table_id || null, reservation_time, guests || 1]
+  );
+  res.json({ id: (result as any).insertId });
+});
+
+app.put("/api/e/reservations/:id", async (req: any, res) => {
+  const { status } = req.body;
+  await pool.execute("UPDATE reservations SET status = ? WHERE id = ? AND establishment_id = ?", [status, req.params.id, req.establishment.id]);
+  res.json({ success: true });
+});
+
+app.delete("/api/e/reservations/:id", async (req: any, res) => {
+  await pool.execute("DELETE FROM reservations WHERE id = ? AND establishment_id = ?", [req.params.id, req.establishment.id]);
+  res.json({ success: true });
+});
+
+// Customer Auth Routes
+app.post("/api/public/customer/register", async (req, res) => {
+  const { establishment_id, name, phone, password } = req.body;
+  try {
+    const [result] = await pool.execute(
+      "INSERT INTO customers (establishment_id, name, phone, password) VALUES (?, ?, ?, ?)",
+      [establishment_id, name, phone, password]
+    );
+    res.json({ id: (result as any).insertId, name, phone });
+  } catch (e) {
+    res.status(400).json({ error: "Telefone já cadastrado nesta loja" });
+  }
+});
+
+app.post("/api/public/customer/login", async (req, res) => {
+  const { establishment_id, phone, password } = req.body;
+  const [rows] = await pool.execute(
+    "SELECT * FROM customers WHERE establishment_id = ? AND phone = ? AND password = ?",
+    [establishment_id, phone, password]
+  );
+  const customer = (rows as any[])[0];
+  if (customer) {
+    res.json(customer);
+  } else {
+    res.status(401).json({ error: "Credenciais inválidas" });
+  }
+});
+
+app.get("/api/public/customer/:id/orders", async (req, res) => {
+  const [rows] = await pool.execute(
+    "SELECT * FROM orders WHERE customer_phone = (SELECT phone FROM customers WHERE id = ?) ORDER BY created_at DESC",
+    [req.params.id]
+  );
+  res.json(rows);
+});
+
 // ============================================
 // INTEGRAÇÃO COM SITE PRINCIPAL (To-Ligado.com)
 // ============================================
 
-const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://automacao-evolution-api.nfeujb.easypanel.host';
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '5BE128D18942-4B09-8AF8-454ADEEB06B1';
+const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || '';
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 // Gerar slug único
 async function generateUniqueSlug(baseName: string): Promise<string> {
   let slug = baseName
@@ -1590,7 +2362,8 @@ app.post('/api/sync/order', async (req, res) => {
   const { order, apiKey } = req.body;
   
   // Verificar API key (segurança)
-  if (apiKey !== 'toligado_sync_2026') {
+  const expectedKey = process.env.SYNC_API_KEY;
+  if (!expectedKey || apiKey !== expectedKey) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   
@@ -1797,23 +2570,17 @@ _Equipe To-Ligado.com_`;
 // Endpoint para verificar status da assinatura
 app.get('/api/e/subscription', async (req: any, res) => {
   try {
-    const [rows] = await pool.execute(
-      `SELECT e.*, p.name as plan_name, p.max_products, p.enable_ai, p.enable_reservations 
-       FROM establishments e 
-       JOIN plans p ON e.plan_id = p.id 
-       WHERE e.id = ?`,
-      [req.establishment.id]
-    );
-    
-    const est = (rows as any[])[0];
+    const features = await getEstablishmentPlanFeatures(req.establishment);
     
     res.json({
-      plan: est.plan_name,
-      status: est.status,
-      maxProducts: est.max_products,
+      plan: features.plan?.name || 'Gratuito',
+      status: req.establishment.status,
+      maxProducts: features.maxProducts,
       features: {
-        ai: est.enable_ai === 1,
-        reservations: est.enable_reservations === 1
+        ai: features.enableAi,
+        reservations: features.enableReservations,
+        automation: features.enableAutomation,
+        tables: features.enableTables
       }
     });
   } catch (error) {
@@ -1882,7 +2649,8 @@ Dúvidas? Responda esta mensagem!
 
 _Equipe To-Ligado.com_`;
         
-        await sendWhatsAppMessage(est.owner_whatsapp, message);
+        await sendWhatsAppMessage(est.owner_whatsapp, message, { useSuperAdmin: true });
+        await notifySuperAdmin('renewal', `⏰ *Lembrete 7 dias enviado*\n\n🏪 ${est.name}\n📱 ${est.owner_whatsapp}`);
         
         // Registrar lembrete enviado
         await pool.execute(
@@ -1928,7 +2696,8 @@ Não perca seus benefícios!
 
 _Equipe To-Ligado.com_`;
         
-        await sendWhatsAppMessage(est.owner_whatsapp, message);
+        await sendWhatsAppMessage(est.owner_whatsapp, message, { useSuperAdmin: true });
+        await notifySuperAdmin('renewal', `⏰ *Lembrete 3 dias enviado*\n\n🏪 ${est.name}\n📱 ${est.owner_whatsapp}`);
         await pool.execute('INSERT INTO reminders_sent (establishment_id, type) VALUES (?, ?)', [est.id, 'expiring_3d']);
         console.log(`📢 Lembrete 3 dias enviado para ${est.name}`);
       }
@@ -1957,19 +2726,15 @@ Olá! Sua assinatura Premium expirou.
 
 Seu plano foi alterado para **Gratuito**:
 - Limite: 10 produtos
-- Sem IA
-- Sem reservas
+- WhatsApp Automático (QR Code), Delivery e Balcão mantidos
+- Sem mesas QR Code, comandas, impressão de cupom e reservas
 
 Para recuperar seus benefícios:
 💰 *Renove:* R$ 49,90/mês
-🔗 ${BASE_URL}/upgrade
-
-_Equipe To-Ligado.com_`;
+🔗 ${BASE_URL}/e/${est.slug}/admin/assinatura`;
       
-      await sendWhatsAppMessage(est.owner_whatsapp, message);
-      
-      // Notificar admin
-      await sendWhatsAppMessage('5591980124904', `⚠️ *Assinatura Expirada*\n\n🍽️ ${est.name}\n📱 ${est.owner_whatsapp}\n\nRebaixado para Gratuito.`);
+      await sendWhatsAppMessage(est.owner_whatsapp, message, { useSuperAdmin: true });
+      await notifySuperAdmin('renewal', `⚠️ *Assinatura Expirada*\n\n🍽️ ${est.name}\n📱 ${est.owner_whatsapp}\n\nRebaixado para Gratuito.`);
       
       console.log(`📉 Estabelecimento ${est.name} rebaixado para Gratuito`);
     }
@@ -1994,10 +2759,9 @@ app.post('/api/cron/check-subscriptions', async (req, res) => {
 // Endpoint para renovar assinatura
 app.post('/api/e/renew', async (req: any, res) => {
   try {
-    const { months, paymentId } = req.body;
+    const { months } = req.body;
     const monthsToAdd = months || 1;
     
-    // Atualizar para Premium e adicionar tempo
     await pool.execute(`
       UPDATE establishments 
       SET plan_id = 2, 
@@ -2010,27 +2774,10 @@ app.post('/api/e/renew', async (req: any, res) => {
     const [rows] = await pool.execute('SELECT * FROM establishments WHERE id = ?', [req.establishment.id]);
     const est = (rows as any[])[0];
     
-    const message = `✅ *Assinatura Renovada!*
-
-🍽️ *Mais Que Cardápio*
-
-Sua assinatura foi renovada com sucesso!
-
-📋 *Plano:* Premium
-📅 *Válido até:* ${est.paid_until ? new Date(est.paid_until).toLocaleDateString('pt-BR') : 'N/A'}
-
-✅ Até 100 produtos
-✅ IA para insights
-✅ Sistema de reservas
-✅ Suporte prioritário
-
-🔗 ${BASE_URL}/e/${est.slug}
-
-Obrigado pela confiança!
-
-_Equipe To-Ligado.com_`;
+    const message = `✅ *Assinatura Renovada!*\n\n🍽️ *Mais Que Cardápio*\n\nSua assinatura foi renovada com sucesso!\n\n📋 *Plano:* Premium\n📅 *Válido até:* ${est.paid_until ? new Date(est.paid_until).toLocaleDateString('pt-BR') : 'N/A'}\n\n🔗 ${BASE_URL}/e/${est.slug}`;
     
-    await sendWhatsAppMessage(est.owner_whatsapp, message);
+    await sendWhatsAppMessage(est.owner_whatsapp, message, { useSuperAdmin: true });
+    await notifySuperAdmin('renewal', `✅ *Assinatura Renovada*\n\n🏪 ${est.name}\n📅 ${monthsToAdd} mês(es)`);
     
     res.json({ success: true, paidUntil: est.paid_until });
   } catch (error) {
@@ -2039,43 +2786,173 @@ _Equipe To-Ligado.com_`;
 });
 
 // ============================================
-// SISTEMA DE MENSALIDADES COM PIX
+// EVOLUTION API - INSTÂNCIA DO CONTRATANTE (QR CODE)
 // ============================================
 
-// Endpoint para gerar PIX de mensalidade
+app.get('/api/e/evolution/status', async (req: any, res) => {
+  try {
+    const ps = await getPlatformSettings();
+    const es = await getEstablishmentSettings(req.establishment.id);
+
+    const globalUrl = ps.evolution_global_url || process.env.EVOLUTION_URL || '';
+    const globalKey = ps.evolution_global_key || process.env.EVOLUTION_KEY || '';
+    const allowTenant = ps.evolution_allow_tenant_instances !== '0';
+
+    const apiUrl = es.evolution_api_url || globalUrl;
+    const apiKey = es.evolution_api_key || globalKey;
+    const instance = es.evolution_instance || '';
+
+    let connected = false;
+    let state = 'disconnected';
+
+    if (apiUrl && apiKey && instance) {
+      try {
+        const stRes = await evolutionRequest(apiUrl, apiKey, `/instance/connectionState/${encodeURIComponent(instance)}`);
+        state = stRes.data?.instance?.state || stRes.data?.state || 'disconnected';
+        connected = stRes.ok && state === 'open';
+      } catch {
+        state = 'unreachable';
+      }
+    }
+
+    res.json({
+      global_configured: Boolean(globalUrl && globalKey),
+      allow_tenant_instances: allowTenant,
+      using_custom_server: Boolean(es.evolution_api_url),
+      evolution_enabled: es.evolution_enabled === '1',
+      instance,
+      connected,
+      state,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao verificar status da Evolution API' });
+  }
+});
+
+app.post('/api/e/evolution/connect', async (req: any, res) => {
+  try {
+    const ps = await getPlatformSettings();
+    const es = await getEstablishmentSettings(req.establishment.id);
+
+    const apiUrl = es.evolution_api_url || ps.evolution_global_url || process.env.EVOLUTION_URL || '';
+    const apiKey = es.evolution_api_key || ps.evolution_global_key || process.env.EVOLUTION_KEY || '';
+
+    if (!apiUrl || !apiKey) {
+      return res.status(400).json({
+        error: 'Evolution API Global não configurada pelo SuperAdmin. Peça ao administrador ou configure uma URL/API Key própria.',
+      });
+    }
+
+    if (!es.evolution_api_url && ps.evolution_allow_tenant_instances === '0') {
+      return res.status(403).json({
+        error: 'A criação automática de instâncias foi desabilitada pelo SuperAdmin.',
+      });
+    }
+
+    const requestedInstance = (req.body?.instanceName || es.evolution_instance || `cardapio-${req.establishment.slug}`)
+      .replace(/[^a-zA-Z0-9_-]/g, '-');
+
+    const result = await connectOrCreateEvolutionInstance(apiUrl, apiKey, requestedInstance);
+
+    await pool.execute(
+      "INSERT INTO settings (establishment_id, `key`, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?",
+      [req.establishment.id, 'evolution_instance', requestedInstance, requestedInstance]
+    );
+    await pool.execute(
+      "INSERT INTO settings (establishment_id, `key`, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?",
+      [req.establishment.id, 'evolution_enabled', '1', '1']
+    );
+
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    console.error('Erro ao conectar instância da loja:', error);
+    res.status(500).json({ error: error?.message || 'Erro ao conectar instância na Evolution API' });
+  }
+});
+
+app.post('/api/e/evolution/disconnect', async (req: any, res) => {
+  try {
+    const ps = await getPlatformSettings();
+    const es = await getEstablishmentSettings(req.establishment.id);
+    const apiUrl = es.evolution_api_url || ps.evolution_global_url || process.env.EVOLUTION_URL || '';
+    const apiKey = es.evolution_api_key || ps.evolution_global_key || process.env.EVOLUTION_KEY || '';
+    const instance = es.evolution_instance || '';
+
+    if (apiUrl && apiKey && instance) {
+      await evolutionRequest(apiUrl, apiKey, `/instance/logout/${encodeURIComponent(instance)}`, 'DELETE').catch(() => null);
+    }
+
+    await pool.execute(
+      "INSERT INTO settings (establishment_id, `key`, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?",
+      [req.establishment.id, 'evolution_enabled', '0', '0']
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao desconectar instância' });
+  }
+});
+
+app.post('/api/e/evolution/test', async (req: any, res) => {
+  try {
+    const es = await getEstablishmentSettings(req.establishment.id);
+    const target = req.body?.phone || es.whatsapp_cashier || req.establishment.owner_whatsapp;
+    if (!target) {
+      return res.status(400).json({ error: 'Informe um número de WhatsApp para teste.' });
+    }
+    const ok = await sendEstablishmentWhatsApp(
+      req.establishment.id,
+      target,
+      `✅ *Teste de Notificação - ${req.establishment.name}*\n\nSua instância WhatsApp está conectada e enviando alertas de pedidos!`
+    );
+    if (!ok) {
+      return res.status(400).json({ error: 'Não foi possível enviar a mensagem. Verifique se a instância está conectada.' });
+    }
+    res.json({ success: true, message: `Mensagem de teste enviada para ${target}!` });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao enviar teste' });
+  }
+});
+
+// ============================================
+// SISTEMA DE MENSALIDADES (PIX + INFINITEPAY)
+// ============================================
+
+// Endpoint para gerar PIX de mensalidade (usando a chave PIX do SuperAdmin)
 app.post('/api/e/subscription/generate-pix', async (req: any, res) => {
   try {
     const { plan_id, months = 1 } = req.body;
-    
-    // Buscar plano
+    const ps = await getPlatformSettings();
+
     const [planRows] = await pool.execute('SELECT * FROM plans WHERE id = ?', [plan_id || 2]);
     const plan = (planRows as any[])[0];
-    
+
     if (!plan) {
       return res.status(404).json({ error: 'Plano não encontrado' });
     }
-    
+
     const amount = parseFloat(plan.price) * months;
-    
-    // Buscar chave PIX do estabelecimento (ou usar chave padrão do sistema)
-    const [settingsRows] = await pool.execute(
-      "SELECT value FROM settings WHERE establishment_id = ? AND `key` = 'pix_key'",
-      [req.establishment.id]
-    );
-    const pixKey = (settingsRows as any[])[0]?.value || process.env.DEFAULT_PIX_KEY || '11999999999';
-    
-    // Gerar código PIX
+    const pixKey = ps.platform_pix_key || process.env.DEFAULT_PIX_KEY || '';
+    if (!pixKey) {
+      return res.status(400).json({ error: 'Chave PIX da plataforma não configurada no SuperAdmin.' });
+    }
+    const merchantName = ps.platform_pix_name || 'MaisQueCardapio';
+
     const txid = `SUB${req.establishment.id}${Date.now()}`.substring(0, 25);
-    const pixCode = generatePixCode(pixKey, amount, `Mensalidade ${plan.name}`, txid);
-    
-    // Criar registro de pagamento na tabela payments (order_id NULL para assinatura)
+    const pixCode = generatePixCode(pixKey, amount, merchantName, txid);
+
     const [result] = await pool.execute(`
       INSERT INTO payments (order_id, establishment_id, amount, pix_code, pix_qrcode, status, created_at)
       VALUES (NULL, ?, ?, ?, ?, 'pending', NOW())
     `, [req.establishment.id, amount, pixCode, pixCode]);
-    
+
     const paymentId = (result as any).insertId;
-    
+
+    await notifySuperAdmin(
+      'payment',
+      `💳 *Novo PIX de Mensalidade Gerado*\n\n🏪 ${req.establishment.name}\n📋 Plano: ${plan.name} (${months} mês(es))\n💰 Valor: R$ ${amount.toFixed(2)}\n🆔 Pagamento #${paymentId}`
+    );
+
     res.json({
       success: true,
       payment_id: paymentId,
@@ -2083,7 +2960,8 @@ app.post('/api/e/subscription/generate-pix', async (req: any, res) => {
       pix_qrcode: pixCode,
       amount: amount,
       plan_name: plan.name,
-      months: months
+      months: months,
+      support_whatsapp: ps.platform_support_whatsapp || '',
     });
   } catch (error) {
     console.error('Erro ao gerar PIX:', error);
@@ -2091,9 +2969,186 @@ app.post('/api/e/subscription/generate-pix', async (req: any, res) => {
   }
 });
 
-// Endpoint para buscar status da assinatura
+// Endpoint para gerar Checkout Link na InfinitePay para mensalidade
+app.post('/api/e/subscription/infinitepay-checkout', async (req: any, res) => {
+  try {
+    const { plan_id = 2, months = 1 } = req.body;
+    const ps = await getPlatformSettings();
+
+    if (ps.infinitepay_enabled !== '1' || !ps.infinitepay_handle) {
+      return res.status(400).json({ error: 'InfinitePay não está configurada pelo SuperAdmin.' });
+    }
+
+    const [planRows] = await pool.execute('SELECT * FROM plans WHERE id = ?', [plan_id]);
+    const plan = (planRows as any[])[0];
+    if (!plan) {
+      return res.status(404).json({ error: 'Plano não encontrado' });
+    }
+
+    const amount = parseFloat(plan.price) * months;
+    const priceInCents = Math.round(amount * 100);
+
+    const [insertRes] = await pool.execute(
+      `INSERT INTO payments (order_id, establishment_id, amount, payment_method, external_id, checkout_url, notes, status, created_at)
+       VALUES (NULL, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
+      [req.establishment.id, amount, 'infinitepay', null, null, `${plan.name} (${months} mês/meses)`]
+    );
+    const paymentId = (insertRes as any).insertId;
+    const orderNsu = `SUB-${paymentId}`;
+
+    const handle = ps.infinitepay_handle.replace(/^\$/, '').trim();
+    const requestOrigin = req.headers.origin || BASE_URL;
+    const redirectUrl = `${requestOrigin}/e/${req.establishment.slug}/admin/assinatura?payment=${paymentId}&status=returned`;
+    const webhookUrl = `${BASE_URL}/api/webhook/infinitepay`;
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (ps.infinitepay_api_key) {
+      headers['X-Api-Key'] = ps.infinitepay_api_key;
+    }
+
+    const ipRes = await fetch('https://api.infinitepay.io/invoices/public/checkout/links', {
+      method: 'POST',
+      headers,
+      signal: AbortSignal.timeout(10000),
+      body: JSON.stringify({
+        handle,
+        items: [
+          {
+            description: `MaisQueCardapio - ${plan.name} (${months} mês/meses)`,
+            price: priceInCents,
+            quantity: 1,
+          },
+        ],
+        order_nsu: orderNsu,
+        redirect_url: redirectUrl,
+        webhook_url: webhookUrl,
+      }),
+    });
+
+    const ipData: any = await ipRes.json().catch(() => ({}));
+    const checkoutUrl = ipData?.url || ipData?.checkout_url || ipData?.link;
+
+    if (!ipRes.ok || !checkoutUrl) {
+      return res.status(502).json({
+        error: ipData?.message || ipData?.error || 'Falha ao gerar link de checkout na InfinitePay. Verifique a InfiniteTag/API Key.',
+      });
+    }
+
+    await pool.execute(
+      `UPDATE payments SET checkout_url = ?, external_id = ? WHERE id = ?`,
+      [checkoutUrl, orderNsu, paymentId]
+    );
+
+    await notifySuperAdmin(
+      'payment',
+      `💳 *Checkout InfinitePay Gerado*\n\n🏪 ${req.establishment.name}\n📋 Plano: ${plan.name} (${months} mês(es))\n💰 Valor: R$ ${amount.toFixed(2)}\n🔖 NSU: ${orderNsu}`
+    );
+
+    res.json({
+      success: true,
+      payment_id: paymentId,
+      order_nsu: orderNsu,
+      checkout_url: checkoutUrl,
+      amount,
+      plan_name: plan.name,
+      months,
+    });
+  } catch (error) {
+    console.error('Erro InfinitePay:', error);
+    res.status(500).json({ error: 'Erro ao comunicar com a InfinitePay' });
+  }
+});
+
+// Webhook público da InfinitePay (confirmação automática de assinaturas e pedidos)
+app.post('/api/webhook/infinitepay', async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const orderNsu = String(payload.order_nsu || payload.external_id || '');
+    console.log('💳 Webhook InfinitePay recebido:', orderNsu, payload);
+
+    if (orderNsu.startsWith('SUB-')) {
+      const paymentId = orderNsu.replace('SUB-', '');
+      const [pRows] = await pool.execute(
+        `SELECT p.*, e.owner_whatsapp, e.slug, e.name as establishment_name, pl.name as plan_name
+         FROM payments p
+         JOIN establishments e ON p.establishment_id = e.id
+         LEFT JOIN plans pl ON e.plan_id = pl.id
+         WHERE p.id = ?`,
+        [paymentId]
+      );
+      const payment = (pRows as any[])[0];
+      if (payment && payment.status !== 'confirmed' && payment.status !== 'paid') {
+        await pool.execute(
+          `UPDATE payments SET status = 'confirmed', paid_at = NOW(), confirmed_by = 'infinitepay' WHERE id = ?`,
+          [paymentId]
+        );
+        await pool.execute(
+          `UPDATE establishments
+           SET status = 'active',
+               plan_id = 2,
+               paid_until = COALESCE(DATE_ADD(paid_until, INTERVAL 1 MONTH), DATE_ADD(CURDATE(), INTERVAL 1 MONTH)),
+               last_payment_at = NOW()
+           WHERE id = ?`,
+          [payment.establishment_id]
+        );
+
+        await sendWhatsAppMessage(
+          payment.owner_whatsapp,
+          `✅ *Pagamento InfinitePay Confirmado!*\n\n🍽️ *${payment.establishment_name}*\n💰 Valor: R$ ${parseFloat(payment.amount).toFixed(2)}\n📋 Plano Premium ativado automaticamente!\n\n🔗 ${BASE_URL}/e/${payment.slug}`,
+          { useSuperAdmin: true }
+        );
+        await notifySuperAdmin(
+          'payment',
+          `✅ *Pagamento InfinitePay Aprovado*\n\n🏪 ${payment.establishment_name}\n💰 R$ ${parseFloat(payment.amount).toFixed(2)}\n🔖 ${orderNsu}`
+        );
+      }
+    } else if (orderNsu.startsWith('ORDER-')) {
+      const orderId = orderNsu.replace('ORDER-', '');
+      const [oRows] = await pool.execute(`SELECT * FROM orders WHERE id = ?`, [orderId]);
+      const order = (oRows as any[])[0];
+      if (order && order.payment_status !== 'pago' && order.payment_status !== 'paid') {
+        await pool.execute(`UPDATE orders SET payment_status = 'pago', status = 'confirmado', updated_at = NOW() WHERE id = ?`, [orderId]);
+        await pool.execute(
+          `UPDATE payments SET status = 'confirmed', paid_at = NOW(), confirmed_by = 'infinitepay' WHERE order_id = ? AND payment_method = 'infinitepay'`,
+          [orderId]
+        );
+        await pool.execute(
+          `INSERT INTO order_history (order_id, status, notes, created_by) VALUES (?, 'pago', 'Pagamento confirmado automaticamente via InfinitePay', 'infinitepay')`,
+          [orderId]
+        );
+
+        const es = await getEstablishmentSettings(order.establishment_id);
+        if (es.evolution_enabled === '1' && es.evolution_instance) {
+          if (order.customer_phone) {
+            await sendEstablishmentWhatsApp(
+              order.establishment_id,
+              order.customer_phone,
+              `✅ *Pagamento InfinitePay Confirmado!*\n\n📦 *Pedido #${order.id}*\n💰 *Valor:* R$ ${(parseFloat(String(order.total)) || 0).toFixed(2)}\n\nSeu pedido foi confirmado e já está em preparo!`
+            );
+          }
+          const notifyTarget = es.whatsapp_cashier || es.whatsapp_kitchen;
+          if (notifyTarget) {
+            await sendEstablishmentWhatsApp(
+              order.establishment_id,
+              notifyTarget,
+              `💳 *Pagamento InfinitePay Aprovado!*\n\n📦 *Pedido #${order.id}*\n👤 *Cliente:* ${order.customer_name || 'N/A'}\n💰 *Total:* R$ ${(parseFloat(String(order.total)) || 0).toFixed(2)}`
+            );
+          }
+        }
+      }
+    }
+
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('Erro no webhook InfinitePay:', error);
+    res.status(200).json({ received: true });
+  }
+});
+
+// Endpoint para buscar status da assinatura + opções de pagamento configuradas pelo SuperAdmin
 app.get('/api/e/subscription/status', async (req: any, res) => {
   try {
+    const ps = await getPlatformSettings();
     const [rows] = await pool.execute(`
       SELECT e.*, p.name as plan_name, p.price as plan_price, p.max_products, p.enable_ai, p.enable_reservations 
       FROM establishments e 
@@ -2110,7 +3165,13 @@ app.get('/api/e/subscription/status', async (req: any, res) => {
       ORDER BY created_at DESC 
       LIMIT 1
     `, [req.establishment.id]);
+
+    const paymentMode = ps.contractor_payment_mode || 'both';
+    const pixConfigured = Boolean(ps.platform_pix_key || process.env.DEFAULT_PIX_KEY);
+    const infinitepayConfigured = ps.infinitepay_enabled === '1' && Boolean(ps.infinitepay_handle);
     
+    const features = await getEstablishmentPlanFeatures(est);
+
     res.json({
       plan: {
         id: est.plan_id,
@@ -2118,15 +3179,23 @@ app.get('/api/e/subscription/status', async (req: any, res) => {
         price: parseFloat(est.plan_price) || 0,
         maxProducts: est.max_products,
         features: {
-          ai: est.enable_ai === 1,
-          reservations: est.enable_reservations === 1
+          ai: features.enableAi,
+          reservations: features.enableReservations,
+          automation: features.enableAutomation,
+          tables: features.enableTables
         }
       },
       status: est.status,
       paid_until: est.paid_until,
       trial_ends_at: est.trial_ends_at,
       last_payment_at: est.last_payment_at,
-      pending_payment: (pendingPayments as any[])[0] || null
+      pending_payment: (pendingPayments as any[])[0] || null,
+      payment_options: {
+        mode: paymentMode,
+        pix_enabled: (paymentMode === 'pix' || paymentMode === 'both') && pixConfigured,
+        infinitepay_enabled: (paymentMode === 'infinitepay' || paymentMode === 'both') && infinitepayConfigured,
+        support_whatsapp: ps.platform_support_whatsapp || '',
+      }
     });
   } catch (error) {
     console.error('Erro ao buscar status da assinatura:', error);
@@ -2201,11 +3270,12 @@ app.post('/api/public/register-with-payment', async (req, res) => {
     
     // Se for Premium, gerar PIX
     let paymentInfo = null;
+    const ps = await getPlatformSettings();
     if (plan_id !== 1 && parseFloat(plan.price) > 0) {
       const amount = parseFloat(plan.price);
-      const pixKey = process.env.DEFAULT_PIX_KEY || '11999999999';
+      const pixKey = ps.platform_pix_key || process.env.DEFAULT_PIX_KEY || '11999999999';
       const txid = `NEW${establishmentId}${Date.now()}`.substring(0, 25);
-      const pixCode = generatePixCode(pixKey, amount, `Mensalidade ${plan.name}`, txid);
+      const pixCode = generatePixCode(pixKey, amount, ps.platform_pix_name || `Mensalidade ${plan.name}`, txid);
       
       // Criar registro de pagamento (order_id NULL para assinatura)
       const [paymentResult] = await pool.execute(`
@@ -2221,6 +3291,11 @@ app.post('/api/public/register-with-payment', async (req, res) => {
         plan_name: plan.name
       };
     }
+
+    await notifySuperAdmin(
+      'signup',
+      `🆕 *Novo Cadastro (Plano ${plan.name})*\n\n🏪 *Loja:* ${name}\n🔗 *Slug:* /e/${slug}\n📱 *WhatsApp:* ${owner_whatsapp}\n📌 *Status:* ${status}`
+    );
     
     res.json({
       success: true,
@@ -2257,7 +3332,7 @@ app.get('/api/superadmin/payments', async (req: any, res) => {
     `;
     const params: any[] = [];
     
-    if (status) {
+    if (status && status !== 'all') {
       query += ` AND p.status = ?`;
       params.push(status);
     }
@@ -2329,28 +3404,11 @@ app.post('/api/superadmin/payments/:id/confirm', async (req: any, res) => {
       WHERE id = ?
     `, [payment.establishment_id]);
     
-    // Enviar WhatsApp para o cliente
-    const message = `✅ *Pagamento Confirmado!*
-
-🍽️ *Mais Que Cardápio*
-
-Olá! Seu pagamento de *R$ ${parseFloat(payment.amount).toFixed(2)}* foi confirmado com sucesso!
-
-📋 *Plano:* ${payment.plan_name || 'Premium'}
-📅 *Válido até:* ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')}
-
-Seu cardápio está ativo! 🎉
-
-🔗 Acesse: ${BASE_URL}/e/${payment.slug}
-
-Obrigado pela confiança!
-
-_Equipe To-Ligado.com_`;
+    // Enviar WhatsApp para o cliente via instância do SuperAdmin
+    const message = `✅ *Pagamento Confirmado!*\n\n🍽️ *Mais Que Cardápio*\n\nOlá! Seu pagamento de *R$ ${parseFloat(payment.amount).toFixed(2)}* foi confirmado com sucesso!\n\n📋 *Plano:* ${payment.plan_name || 'Premium'}\n📅 *Válido até:* ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')}\n\nSeu cardápio está ativo! 🎉\n\n🔗 Acesse: ${BASE_URL}/e/${payment.slug}`;
     
-    await sendWhatsAppMessage(payment.owner_whatsapp, message);
-    
-    // Notificar admin sobre confirmação
-    await sendWhatsAppMessage('5591980124904', `✅ *Pagamento Confirmado*\n\n💳 ID: #${paymentId}\n🏪 ${payment.establishment_name}\n💰 R$ ${parseFloat(payment.amount).toFixed(2)}\n📱 ${payment.owner_whatsapp}`);
+    await sendWhatsAppMessage(payment.owner_whatsapp, message, { useSuperAdmin: true });
+    await notifySuperAdmin('payment', `✅ *Pagamento Confirmado*\n\n💳 ID: #${paymentId}\n🏪 ${payment.establishment_name}\n💰 R$ ${parseFloat(payment.amount).toFixed(2)}\n📱 ${payment.owner_whatsapp}`);
     
     res.json({ 
       success: true, 
@@ -2390,21 +3448,9 @@ app.post('/api/superadmin/payments/:id/reject', async (req: any, res) => {
     `, [reason || 'Pagamento rejeitado', paymentId]);
     
     // Notificar cliente
-    const message = `❌ *Pagamento Rejeitado*
-
-🍽️ *Mais Que Cardápio*
-
-Olá! Infelizmente não foi possível confirmar seu pagamento.
-
-${reason ? `*Motivo:* ${reason}` : ''}
-
-Por favor, entre em contato para regularizar.
-
-🔗 ${BASE_URL}/e/${payment.slug}/admin/assinatura
-
-_Equipe To-Ligado.com_`;
+    const message = `❌ *Pagamento Rejeitado*\n\n🍽️ *Mais Que Cardápio*\n\nOlá! Infelizmente não foi possível confirmar seu pagamento.\n\n${reason ? `*Motivo:* ${reason}` : ''}\n\n🔗 ${BASE_URL}/e/${payment.slug}/admin/assinatura`;
     
-    await sendWhatsAppMessage(payment.owner_whatsapp, message);
+    await sendWhatsAppMessage(payment.owner_whatsapp, message, { useSuperAdmin: true });
     
     res.json({ 
       success: true, 
@@ -2445,6 +3491,164 @@ app.get('/api/superadmin/payments/:id', async (req: any, res) => {
   }
 });
 
+// ============================================
+// SUPERADMIN - CONFIGURAÇÕES GLOBAIS & EVOLUTION
+// ============================================
+
+app.get('/api/superadmin/settings', async (req: any, res) => {
+  try {
+    const ps = await getPlatformSettings();
+    res.json({
+      contractor_payment_mode: ps.contractor_payment_mode || 'both',
+      platform_pix_key: ps.platform_pix_key || '',
+      platform_pix_name: ps.platform_pix_name || 'MaisQueCardapio',
+      platform_support_whatsapp: ps.platform_support_whatsapp || '',
+      infinitepay_enabled: ps.infinitepay_enabled || '0',
+      infinitepay_handle: ps.infinitepay_handle || '',
+      has_infinitepay_api_key: Boolean(ps.infinitepay_api_key),
+      evolution_global_url: ps.evolution_global_url || '',
+      has_evolution_global_key: Boolean(ps.evolution_global_key),
+      evolution_allow_tenant_instances: ps.evolution_allow_tenant_instances !== '0' ? '1' : '0',
+      superadmin_evolution_instance: ps.superadmin_evolution_instance || 'superadmin-maisquecardapio',
+      superadmin_notify_whatsapp: ps.superadmin_notify_whatsapp || '',
+      superadmin_notify_new_signup: ps.superadmin_notify_new_signup !== '0' ? '1' : '0',
+      superadmin_notify_payment: ps.superadmin_notify_payment !== '0' ? '1' : '0',
+      superadmin_notify_renewal: ps.superadmin_notify_renewal !== '0' ? '1' : '0',
+    });
+  } catch (error) {
+    console.error('Erro ao buscar configurações do SuperAdmin:', error);
+    res.status(500).json({ error: 'Erro ao buscar configurações' });
+  }
+});
+
+app.post('/api/superadmin/settings', async (req: any, res) => {
+  try {
+    const allowedKeys = [
+      'contractor_payment_mode',
+      'platform_pix_key',
+      'platform_pix_name',
+      'platform_support_whatsapp',
+      'infinitepay_enabled',
+      'infinitepay_handle',
+      'infinitepay_api_key',
+      'evolution_global_url',
+      'evolution_global_key',
+      'evolution_allow_tenant_instances',
+      'superadmin_evolution_instance',
+      'superadmin_notify_whatsapp',
+      'superadmin_notify_new_signup',
+      'superadmin_notify_payment',
+      'superadmin_notify_renewal',
+    ];
+
+    for (const key of allowedKeys) {
+      if (req.body[key] === undefined) continue;
+      // Para chaves secretas, só atualiza se o usuário enviou um valor novo não vazio
+      if ((key === 'evolution_global_key' || key === 'infinitepay_api_key') && !String(req.body[key]).trim()) {
+        continue;
+      }
+      await setPlatformSetting(key, String(req.body[key]));
+    }
+
+    res.json({ success: true, message: 'Configurações globais salvas!' });
+  } catch (error) {
+    console.error('Erro ao salvar configurações do SuperAdmin:', error);
+    res.status(500).json({ error: 'Erro ao salvar configurações' });
+  }
+});
+
+app.get('/api/superadmin/evolution/status', async (req: any, res) => {
+  try {
+    const ps = await getPlatformSettings();
+    const apiUrl = ps.evolution_global_url || process.env.EVOLUTION_URL || '';
+    const apiKey = ps.evolution_global_key || process.env.EVOLUTION_KEY || '';
+    const instance = ps.superadmin_evolution_instance || 'superadmin-maisquecardapio';
+
+    let connected = false;
+    let state = 'disconnected';
+    if (apiUrl && apiKey && instance) {
+      try {
+        const stRes = await evolutionRequest(apiUrl, apiKey, `/instance/connectionState/${encodeURIComponent(instance)}`);
+        state = stRes.data?.instance?.state || stRes.data?.state || 'disconnected';
+        connected = stRes.ok && state === 'open';
+      } catch {
+        state = 'unreachable';
+      }
+    }
+
+    res.json({
+      configured: Boolean(apiUrl && apiKey),
+      instance,
+      connected,
+      state,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao verificar instância do SuperAdmin' });
+  }
+});
+
+app.post('/api/superadmin/evolution/connect', async (req: any, res) => {
+  try {
+    const ps = await getPlatformSettings();
+    const apiUrl = ps.evolution_global_url || process.env.EVOLUTION_URL || '';
+    const apiKey = ps.evolution_global_key || process.env.EVOLUTION_KEY || '';
+    if (!apiUrl || !apiKey) {
+      return res.status(400).json({ error: 'Salve a URL e a API Key Global da Evolution API antes de conectar.' });
+    }
+
+    const instanceName = (req.body?.instanceName || ps.superadmin_evolution_instance || 'superadmin-maisquecardapio')
+      .replace(/[^a-zA-Z0-9_-]/g, '-');
+    await setPlatformSetting('superadmin_evolution_instance', instanceName);
+
+    const result = await connectOrCreateEvolutionInstance(apiUrl, apiKey, instanceName);
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    console.error('Erro ao conectar instância SuperAdmin:', error);
+    res.status(500).json({ error: error?.message || 'Erro ao conectar instância na Evolution API' });
+  }
+});
+
+app.post('/api/superadmin/evolution/disconnect', async (req: any, res) => {
+  try {
+    const ps = await getPlatformSettings();
+    const apiUrl = ps.evolution_global_url || process.env.EVOLUTION_URL || '';
+    const apiKey = ps.evolution_global_key || process.env.EVOLUTION_KEY || '';
+    const instance = ps.superadmin_evolution_instance || 'superadmin-maisquecardapio';
+    if (apiUrl && apiKey && instance) {
+      await evolutionRequest(apiUrl, apiKey, `/instance/logout/${encodeURIComponent(instance)}`, 'DELETE').catch(() => null);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao desconectar instância' });
+  }
+});
+
+app.post('/api/superadmin/evolution/test', async (req: any, res) => {
+  try {
+    const ps = await getPlatformSettings();
+    const target = req.body?.phone || ps.superadmin_notify_whatsapp;
+    if (!target) {
+      return res.status(400).json({ error: 'Informe o WhatsApp do SuperAdmin para enviar o teste.' });
+    }
+    const ok = await sendWhatsAppMessage(
+      target,
+      `✅ *Teste SuperAdmin - MaisQueCardapio*\n\nSua instância de notificações administrativas está ativa para contratações, pagamentos e lembretes de renovação!`,
+      { useSuperAdmin: true }
+    );
+    if (!ok) {
+      return res.status(400).json({ error: 'Falha ao enviar mensagem. Verifique se a instância está conectada e a API Key está correta.' });
+    }
+    res.json({ success: true, message: `Mensagem de teste enviada para ${target}!` });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao enviar mensagem de teste' });
+  }
+});
+
+app.post('/api/superadmin/cron/check-renewals', async (req: any, res) => {
+  const result = await checkExpiringSubscriptions();
+  res.json({ success: true, ...result });
+});
+
 // Static files
 if (process.env.NODE_ENV !== "production") {
   const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
@@ -2454,5 +3658,5 @@ if (process.env.NODE_ENV !== "production") {
   app.get("*", (req, res) => res.sendFile(path.join(__dirname, "dist", "index.html")));
 }
 
-const PORT = process.env.PORT || 80;
+const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, "0.0.0.0", () => console.log(`Server on ${PORT}`));
