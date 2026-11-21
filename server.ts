@@ -1042,6 +1042,7 @@ app.delete("/api/superadmin/establishments/:id", async (req, res) => {
     await pool.execute("DELETE FROM tables WHERE establishment_id = ?", [estId]);
     await pool.execute("DELETE FROM orders WHERE establishment_id = ?", [estId]);
     await pool.execute("DELETE FROM reservations WHERE establishment_id = ?", [estId]);
+    await pool.execute("DELETE FROM customers WHERE establishment_id = ?", [estId]);
     await pool.execute("DELETE FROM settings WHERE establishment_id = ?", [estId]);
     await pool.execute("DELETE FROM establishments WHERE id = ?", [estId]);
     res.json({ success: true });
@@ -1299,6 +1300,188 @@ app.get("/api/e/orders", async (req: any, res) => {
     LIMIT 100
   `, [req.establishment.id]);
   res.json(rows);
+});
+
+app.get("/api/e/customers", async (req: any, res) => {
+  try {
+    const estId = req.establishment.id;
+    const [custRows] = await pool.execute(`
+      SELECT c.id, c.establishment_id, c.name, c.phone, c.email,
+             c.address, c.address_number, c.address_complement, c.address_reference,
+             c.neighborhood_id, n.name as neighborhood_name,
+             c.total_orders, c.total_spent, c.created_at, c.last_order_at
+      FROM customers c
+      LEFT JOIN neighborhoods n ON c.neighborhood_id = n.id
+      WHERE c.establishment_id = ?
+      ORDER BY COALESCE(c.last_order_at, c.created_at) DESC
+    `, [estId]);
+
+    const [orderRows] = await pool.execute(`
+      SELECT o.*, n.name as neighborhood_name
+      FROM orders o
+      LEFT JOIN neighborhoods n ON o.neighborhood_id = n.id
+      WHERE o.establishment_id = ?
+      ORDER BY o.created_at DESC
+      LIMIT 500
+    `, [estId]);
+
+    const normalizePhoneKey = (raw: string | null | undefined) => {
+      const digits = String(raw || '').replace(/\D/g, '');
+      if (!digits) return '';
+      if (digits.startsWith('55') && digits.length >= 12) return digits.slice(2);
+      return digits;
+    };
+
+    const customerMap = new Map<string, any>();
+
+    for (const c of custRows as any[]) {
+      const key = normalizePhoneKey(c.phone) || `id_${c.id}`;
+      customerMap.set(key, {
+        id: c.id,
+        name: c.name || 'Cliente',
+        phone: c.phone || '',
+        email: c.email || null,
+        address: c.address || null,
+        address_number: c.address_number || null,
+        address_complement: c.address_complement || null,
+        address_reference: c.address_reference || null,
+        neighborhood_id: c.neighborhood_id || null,
+        neighborhood_name: c.neighborhood_name || null,
+        stored_orders: Number(c.total_orders) || 0,
+        stored_spent: parseFloat(c.total_spent) || 0,
+        total_orders: 0,
+        total_spent: 0,
+        created_at: c.created_at,
+        last_order_at: c.last_order_at || null,
+        recent_orders: [] as any[],
+      });
+    }
+
+    for (const o of orderRows as any[]) {
+      const key = normalizePhoneKey(o.customer_phone);
+      if (!key) continue;
+
+      let entry = customerMap.get(key);
+      if (!entry) {
+        entry = {
+          id: null,
+          name: o.customer_name || 'Cliente',
+          phone: o.customer_phone || '',
+          email: o.customer_email || null,
+          address: o.address || null,
+          address_number: o.address_number || null,
+          address_complement: o.address_complement || null,
+          address_reference: o.address_reference || null,
+          neighborhood_id: o.neighborhood_id || null,
+          neighborhood_name: o.neighborhood_name || null,
+          stored_orders: 0,
+          stored_spent: 0,
+          total_orders: 0,
+          total_spent: 0,
+          created_at: o.created_at,
+          last_order_at: o.created_at,
+          recent_orders: [] as any[],
+        };
+        customerMap.set(key, entry);
+      }
+
+      if (!entry.address && o.address) {
+        entry.address = o.address;
+        entry.address_number = o.address_number || entry.address_number;
+        entry.address_complement = o.address_complement || entry.address_complement;
+        entry.address_reference = o.address_reference || entry.address_reference;
+        entry.neighborhood_id = o.neighborhood_id || entry.neighborhood_id;
+        entry.neighborhood_name = o.neighborhood_name || entry.neighborhood_name;
+      }
+
+      const isCancelled = o.status === 'cancelled' || o.status === 'cancelado';
+      if (!isCancelled) {
+        entry.total_orders += 1;
+        entry.total_spent += parseFloat(String(o.total)) || 0;
+        if (!entry.last_order_at || new Date(o.created_at).getTime() > new Date(entry.last_order_at).getTime()) {
+          entry.last_order_at = o.created_at;
+        }
+      }
+
+      if (entry.recent_orders.length < 20) {
+        entry.recent_orders.push({
+          id: o.id,
+          total: parseFloat(String(o.total)) || 0,
+          status: o.status,
+          payment_method: o.payment_method,
+          payment_status: o.payment_status,
+          type: o.type,
+          items_text: o.items_text,
+          created_at: o.created_at,
+        });
+      }
+    }
+
+    const result = Array.from(customerMap.values())
+      .map((c) => {
+        const ordersCount = c.recent_orders.length > 0 ? c.total_orders : c.stored_orders;
+        const totalSpent = c.recent_orders.length > 0 ? c.total_spent : c.stored_spent;
+        const { stored_orders, stored_spent, ...rest } = c;
+        return {
+          ...rest,
+          total_orders: ordersCount,
+          total_spent: totalSpent,
+        };
+      })
+      .sort((a, b) => {
+        const ta = new Date(a.last_order_at || a.created_at || 0).getTime();
+        const tb = new Date(b.last_order_at || b.created_at || 0).getTime();
+        return tb - ta;
+      });
+
+    res.json(result);
+  } catch (error) {
+    console.error("Erro ao buscar clientes:", error);
+    res.status(500).json({ error: "Erro ao buscar clientes" });
+  }
+});
+
+app.post("/api/e/customers", async (req: any, res) => {
+  try {
+    const { name, phone, email, address, address_number, address_complement, address_reference, neighborhood_id } = req.body;
+    const cleanName = String(name || '').trim();
+    const cleanPhone = String(phone || '').trim();
+    if (!cleanName || !cleanPhone) {
+      return res.status(400).json({ error: "Nome e telefone são obrigatórios" });
+    }
+    const [result] = await pool.execute(
+      `INSERT INTO customers (establishment_id, name, phone, email, password, address, address_number, address_complement, address_reference, neighborhood_id)
+       VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
+      [
+        req.establishment.id,
+        cleanName,
+        cleanPhone,
+        email ? String(email).trim() : null,
+        address ? String(address).trim() : null,
+        address_number ? String(address_number).trim() : null,
+        address_complement ? String(address_complement).trim() : null,
+        address_reference ? String(address_reference).trim() : null,
+        neighborhood_id ? Number(neighborhood_id) : null
+      ]
+    );
+    res.json({ id: (result as any).insertId, success: true });
+  } catch (error: any) {
+    if (String(error?.message || '').toLowerCase().includes('duplicate')) {
+      return res.status(400).json({ error: "Já existe um cliente cadastrado com este telefone." });
+    }
+    console.error("Erro ao cadastrar cliente:", error);
+    res.status(500).json({ error: "Erro ao cadastrar cliente" });
+  }
+});
+
+app.delete("/api/e/customers/:id", async (req: any, res) => {
+  try {
+    await pool.execute("DELETE FROM customers WHERE id = ? AND establishment_id = ?", [req.params.id, req.establishment.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro ao excluir cliente:", error);
+    res.status(500).json({ error: "Erro ao excluir cliente" });
+  }
 });
 
 // Buscar pedido específico

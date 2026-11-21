@@ -52,7 +52,8 @@ import {
   WifiOff,
   Sliders,
   ClipboardList,
-  Lock
+  Lock,
+  Users
 } from 'lucide-react';
 import { cn, Product, Category, Neighborhood, CartItem, Order, OrderStatus, PaymentStatus, CustomerData, DashboardMetrics } from './types';
 
@@ -2246,7 +2247,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
-  const [activeTab, setActiveTab] = useState<'products' | 'tables' | 'delivery' | 'categories' | 'orders' | 'commands' | 'reservations' | 'help' | 'settings' | 'subscription'>('orders');
+  const [activeTab, setActiveTab] = useState<'products' | 'tables' | 'delivery' | 'categories' | 'orders' | 'customers' | 'commands' | 'reservations' | 'help' | 'settings' | 'subscription'>('orders');
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     // Verifica se já está logado no localStorage
     return localStorage.getItem(`admin_auth_${slug}`) === 'true';
@@ -2255,6 +2256,13 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
   const [commands, setCommands] = useState<any[]>([]);
   const [reservations, setReservations] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerFilter, setCustomerFilter] = useState<'all' | 'recurring'>('all');
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [customerForm, setCustomerForm] = useState({ name: '', phone: '', email: '', address: '', address_number: '', neighborhood_id: '' });
+  const [customerFormError, setCustomerFormError] = useState('');
   const [settings, setSettings] = useState<any>({});
   const [evolutionStatus, setEvolutionStatus] = useState<any>(null);
   const [evoQr, setEvoQr] = useState<any>(null);
@@ -2464,6 +2472,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
       apiFetch('/commands').then(res => res.json()).then(setCommands);
       apiFetch('/reservations').then(res => res.json()).then(setReservations);
       apiFetch('/orders').then(res => res.json()).then(setOrders);
+      apiFetch('/customers').then(res => res.ok ? res.json() : []).then(data => setCustomers(Array.isArray(data) ? data : [])).catch(() => {});
       apiFetch('/settings').then(res => res.json()).then((s) => {
         setSettings(s);
         setEvoInstanceInput(s.evolution_instance || `cardapio-${slug}`);
@@ -2734,6 +2743,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
         <div className="flex gap-1 sm:gap-2 mb-8 border-b border-zinc-800 overflow-x-auto no-scrollbar whitespace-nowrap pb-1">
           {[
             { id: 'orders', label: 'Pedidos', icon: ShoppingCart },
+            { id: 'customers', label: customers.length > 0 ? `Clientes (${customers.length})` : 'Clientes', icon: Users },
             { id: 'commands', label: commands.length > 0 ? `Comandas (${commands.length})` : 'Comandas', icon: ClipboardList },
             { id: 'reservations', label: 'Reservas', icon: Calendar },
             { id: 'products', label: 'Produtos', icon: MenuIcon },
@@ -2748,7 +2758,12 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => {
+                  setActiveTab(tab.id as any);
+                  if (tab.id === 'customers') {
+                    apiFetch('/customers').then(res => res.ok ? res.json() : []).then(data => setCustomers(Array.isArray(data) ? data : [])).catch(() => {});
+                  }
+                }}
                 className={cn(
                   "px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-black uppercase tracking-wider sm:tracking-widest flex items-center gap-2 sm:gap-3 transition-all border-b-2 shrink-0",
                   activeTab === tab.id 
@@ -3147,6 +3162,262 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             )}
           </div>
         )}
+
+        {activeTab === 'customers' && (() => {
+          const query = customerSearch.trim().toLowerCase();
+          const filteredCustomers = customers.filter(c => {
+            if (customerFilter === 'recurring' && (Number(c.total_orders) || 0) < 2) return false;
+            if (!query) return true;
+            return (
+              String(c.name || '').toLowerCase().includes(query) ||
+              String(c.phone || '').toLowerCase().includes(query) ||
+              String(c.neighborhood_name || '').toLowerCase().includes(query) ||
+              String(c.address || '').toLowerCase().includes(query)
+            );
+          });
+          const recurringCount = customers.filter(c => (Number(c.total_orders) || 0) >= 2).length;
+          const totalRevenueCustomers = customers.reduce((sum, c) => sum + (parseFloat(c.total_spent) || 0), 0);
+
+          return (
+            <div className="space-y-4 sm:space-y-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+                <div className="bg-white text-zinc-900 p-4 sm:p-5 rounded-2xl border border-zinc-100 shadow-sm">
+                  <p className="text-[11px] font-bold text-zinc-500 uppercase">Total de Clientes</p>
+                  <p className="text-2xl sm:text-3xl font-black text-zinc-900 mt-1">{customers.length}</p>
+                </div>
+                <div className="bg-white text-zinc-900 p-4 sm:p-5 rounded-2xl border border-zinc-100 shadow-sm">
+                  <p className="text-[11px] font-bold text-zinc-500 uppercase">Recorrentes (2+)</p>
+                  <p className="text-2xl sm:text-3xl font-black text-emerald-600 mt-1">{recurringCount}</p>
+                </div>
+                <div className="col-span-2 sm:col-span-1 bg-white text-zinc-900 p-4 sm:p-5 rounded-2xl border border-zinc-100 shadow-sm">
+                  <p className="text-[11px] font-bold text-zinc-500 uppercase">Total Movimentado</p>
+                  <p className="text-2xl sm:text-3xl font-black text-orange-600 mt-1">R$ {totalRevenueCustomers.toFixed(2)}</p>
+                </div>
+              </div>
+
+              <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
+                <div className="p-4 sm:p-6 border-b border-zinc-100 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-bold text-zinc-900">Base de Clientes</h2>
+                      <p className="text-zinc-500 text-sm">Clientes cadastrados automaticamente a cada pedido ou cadastro no cardápio</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomerForm({ name: '', phone: '', email: '', address: '', address_number: '', neighborhood_id: '' });
+                        setCustomerFormError('');
+                        setIsCustomerModalOpen(true);
+                      }}
+                      className="w-full sm:w-auto justify-center bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4 shrink-0" />
+                      Novo Cliente
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={customerSearch}
+                        onChange={e => setCustomerSearch(e.target.value)}
+                        placeholder="Buscar por nome, WhatsApp, bairro ou endereço..."
+                        className="w-full bg-zinc-50 text-zinc-900 placeholder:text-zinc-400 border border-zinc-200 pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setCustomerFilter('all')}
+                        className={cn(
+                          "flex-1 sm:flex-none px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer",
+                          customerFilter === 'all' ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                        )}
+                      >
+                        Todos ({customers.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomerFilter('recurring')}
+                        className={cn(
+                          "flex-1 sm:flex-none px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer",
+                          customerFilter === 'recurring' ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                        )}
+                      >
+                        Recorrentes ({recurringCount})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {filteredCustomers.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <Users className="w-12 h-12 text-zinc-200 mx-auto mb-4" />
+                    <p className="text-zinc-500 font-medium">Nenhum cliente encontrado.</p>
+                    <p className="text-zinc-400 text-xs mt-1">Os clientes são salvos automaticamente quando fazem pedidos pelo cardápio.</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Mobile cards */}
+                    <div className="md:hidden divide-y divide-zinc-100">
+                      {filteredCustomers.map((c, idx) => {
+                        const phoneDigits = String(c.phone || '').replace(/\D/g, '');
+                        const waNumber = phoneDigits.startsWith('55') ? phoneDigits : (phoneDigits.length >= 10 ? `55${phoneDigits}` : phoneDigits);
+                        return (
+                          <div key={c.id || `${c.phone}-${idx}`} className="p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-bold text-zinc-900 truncate">{c.name || 'Cliente'}</p>
+                                <p className="text-xs text-zinc-500 font-mono">{c.phone || 'Sem telefone'}</p>
+                                {(c.neighborhood_name || c.address) && (
+                                  <p className="text-xs text-zinc-500 mt-1 break-words">
+                                    {[c.address && `${c.address}${c.address_number ? `, ${c.address_number}` : ''}`, c.neighborhood_name].filter(Boolean).join(' · ')}
+                                  </p>
+                                )}
+                              </div>
+                              <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 text-xs font-bold shrink-0">
+                                {c.total_orders || 0} {Number(c.total_orders) === 1 ? 'pedido' : 'pedidos'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-zinc-500 bg-zinc-50 px-3 py-2 rounded-xl">
+                              <span>Total gasto: <strong className="text-zinc-900">R$ {(parseFloat(c.total_spent) || 0).toFixed(2)}</strong></span>
+                              <span>{c.last_order_at ? new Date(c.last_order_at).toLocaleDateString('pt-BR') : 'Novo'}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {waNumber && (
+                                <a
+                                  href={`https://wa.me/${waNumber}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex-1 min-w-[110px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5 shrink-0" /> WhatsApp
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedCustomer(c)}
+                                className="flex-1 min-w-[110px] bg-zinc-100 hover:bg-zinc-200 text-zinc-800 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+                              >
+                                <Eye className="w-3.5 h-3.5 shrink-0" /> Histórico
+                              </button>
+                              {c.id && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (confirm(`Remover cliente ${c.name}?`)) {
+                                      await apiFetch(`/customers/${c.id}`, { method: 'DELETE' });
+                                      apiFetch('/customers').then(r => r.json()).then(setCustomers);
+                                    }
+                                  }}
+                                  className="p-2 text-zinc-400 hover:text-red-500 border border-zinc-200 rounded-xl shrink-0"
+                                  title="Excluir cliente"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Desktop table */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead className="bg-zinc-50 text-zinc-500 text-xs uppercase tracking-wider">
+                          <tr>
+                            <th className="px-6 py-4 font-semibold">Cliente</th>
+                            <th className="px-6 py-4 font-semibold">Endereço / Bairro</th>
+                            <th className="px-6 py-4 font-semibold">Pedidos</th>
+                            <th className="px-6 py-4 font-semibold">Total Gasto</th>
+                            <th className="px-6 py-4 font-semibold">Último Pedido</th>
+                            <th className="px-6 py-4 font-semibold text-right">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {filteredCustomers.map((c, idx) => {
+                            const phoneDigits = String(c.phone || '').replace(/\D/g, '');
+                            const waNumber = phoneDigits.startsWith('55') ? phoneDigits : (phoneDigits.length >= 10 ? `55${phoneDigits}` : phoneDigits);
+                            return (
+                              <tr key={c.id || `${c.phone}-${idx}`} className="hover:bg-zinc-50 transition-colors">
+                                <td className="px-6 py-4">
+                                  <div className="font-bold text-zinc-900">{c.name || 'Cliente'}</div>
+                                  <div className="text-xs text-zinc-500 font-mono">{c.phone || 'Sem telefone'}</div>
+                                  {c.email && <div className="text-xs text-zinc-400">{c.email}</div>}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-zinc-600 max-w-xs">
+                                  {c.address || c.neighborhood_name ? (
+                                    <div>
+                                      {c.address && <div className="truncate">{c.address}{c.address_number ? `, ${c.address_number}` : ''}</div>}
+                                      {c.neighborhood_name && <div className="text-xs text-zinc-400">{c.neighborhood_name}</div>}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-zinc-400">Balcão / Não informado</span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 text-xs font-bold">
+                                    {c.total_orders || 0}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 font-bold text-zinc-900">
+                                  R$ {(parseFloat(c.total_spent) || 0).toFixed(2)}
+                                </td>
+                                <td className="px-6 py-4 text-xs text-zinc-500">
+                                  {c.last_order_at ? new Date(c.last_order_at).toLocaleDateString('pt-BR') : '—'}
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <div className="flex justify-end items-center gap-2">
+                                    {waNumber && (
+                                      <a
+                                        href={`https://wa.me/${waNumber}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-bold flex items-center gap-1"
+                                        title="Abrir WhatsApp"
+                                      >
+                                        <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                                      </a>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedCustomer(c)}
+                                      className="px-2.5 py-1.5 rounded-lg bg-zinc-100 text-zinc-700 hover:bg-zinc-200 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Eye className="w-3.5 h-3.5" /> Histórico
+                                    </button>
+                                    {c.id && (
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          if (confirm(`Remover cliente ${c.name}?`)) {
+                                            await apiFetch(`/customers/${c.id}`, { method: 'DELETE' });
+                                            apiFetch('/customers').then(r => r.json()).then(setCustomers);
+                                          }
+                                        }}
+                                        className="p-2 text-zinc-400 hover:text-red-500 transition-colors cursor-pointer"
+                                        title="Excluir cliente"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {activeTab === 'commands' && (
           !hasTablesAndPrint ? (
@@ -4290,6 +4561,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                         setCounterItems({});
                         apiFetch('/orders').then(r => r.json()).then(setOrders);
                         apiFetch('/commands').then(r => r.json()).then(setCommands);
+                        apiFetch('/customers').then(r => r.ok ? r.json() : []).then(data => setCustomers(Array.isArray(data) ? data : [])).catch(() => {});
                       }
                     } finally {
                       setCounterSubmitting(false);
@@ -4445,6 +4717,169 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                       {counterSubmitting ? 'Lançando...' : 'Confirmar Lançamento'}
                     </button>
                   </div>
+                </form>
+              </motion.div>
+            </div>
+          )}
+
+          {selectedCustomer && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setSelectedCustomer(null)}
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.94, opacity: 0 }}
+                className="relative bg-white text-zinc-900 w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl"
+              >
+                <div className="p-5 sm:p-6 border-b border-zinc-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                  <div className="min-w-0">
+                    <h2 className="text-xl font-bold text-zinc-900 truncate">{selectedCustomer.name || 'Cliente'}</h2>
+                    <p className="text-xs text-zinc-500 font-mono">{selectedCustomer.phone}</p>
+                  </div>
+                  <button type="button" onClick={() => setSelectedCustomer(null)} className="p-2 hover:bg-zinc-100 rounded-full shrink-0"><X className="w-5 h-5" /></button>
+                </div>
+                <div className="p-5 sm:p-6 space-y-5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-zinc-50 p-3.5 rounded-2xl border border-zinc-100">
+                      <p className="text-[11px] font-bold text-zinc-500 uppercase">Pedidos</p>
+                      <p className="text-xl font-black text-zinc-900">{selectedCustomer.total_orders || 0}</p>
+                    </div>
+                    <div className="bg-zinc-50 p-3.5 rounded-2xl border border-zinc-100">
+                      <p className="text-[11px] font-bold text-zinc-500 uppercase">Total Gasto</p>
+                      <p className="text-xl font-black text-orange-600">R$ {(parseFloat(selectedCustomer.total_spent) || 0).toFixed(2)}</p>
+                    </div>
+                  </div>
+
+                  {(selectedCustomer.address || selectedCustomer.neighborhood_name || selectedCustomer.email) && (
+                    <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100 space-y-1.5 text-sm">
+                      {selectedCustomer.email && <p className="text-zinc-600"><strong className="text-zinc-900">E-mail:</strong> {selectedCustomer.email}</p>}
+                      {selectedCustomer.address && (
+                        <p className="text-zinc-600 break-words">
+                          <strong className="text-zinc-900">Endereço:</strong> {selectedCustomer.address}{selectedCustomer.address_number ? `, ${selectedCustomer.address_number}` : ''}
+                          {selectedCustomer.address_complement ? ` (${selectedCustomer.address_complement})` : ''}
+                        </p>
+                      )}
+                      {selectedCustomer.neighborhood_name && <p className="text-zinc-600"><strong className="text-zinc-900">Bairro:</strong> {selectedCustomer.neighborhood_name}</p>}
+                      {selectedCustomer.address_reference && <p className="text-zinc-600"><strong className="text-zinc-900">Referência:</strong> {selectedCustomer.address_reference}</p>}
+                    </div>
+                  )}
+
+                  {(() => {
+                    const phoneDigits = String(selectedCustomer.phone || '').replace(/\D/g, '');
+                    const waNumber = phoneDigits.startsWith('55') ? phoneDigits : (phoneDigits.length >= 10 ? `55${phoneDigits}` : phoneDigits);
+                    return waNumber ? (
+                      <a
+                        href={`https://wa.me/${waNumber}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                      >
+                        <MessageCircle className="w-4 h-4" /> Conversar no WhatsApp
+                      </a>
+                    ) : null;
+                  })()}
+
+                  <div>
+                    <h3 className="font-bold text-zinc-900 text-sm uppercase tracking-wider mb-3">Últimos Pedidos</h3>
+                    {(!selectedCustomer.recent_orders || selectedCustomer.recent_orders.length === 0) ? (
+                      <p className="text-sm text-zinc-400">Nenhum pedido registrado para este cliente ainda.</p>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {selectedCustomer.recent_orders.map((ord: any) => (
+                          <div key={ord.id} className="p-3.5 rounded-2xl border border-zinc-200 bg-zinc-50/50 space-y-1.5">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-bold text-zinc-900">Pedido #{ord.id} · {ord.type === 'table' ? 'Mesa' : ord.type === 'pickup' ? 'Balcão' : 'Delivery'}</span>
+                              <span className="text-zinc-500">{new Date(ord.created_at).toLocaleDateString('pt-BR')}</span>
+                            </div>
+                            {ord.items_text && <p className="text-xs text-zinc-600 whitespace-pre-wrap">{ord.items_text}</p>}
+                            <div className="flex justify-between items-center pt-1 text-xs">
+                              <span className="uppercase font-bold text-zinc-500">{ord.payment_method}</span>
+                              <span className="font-black text-orange-600">R$ {(parseFloat(ord.total) || 0).toFixed(2)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+
+          {isCustomerModalOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setIsCustomerModalOpen(false)}
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.94, opacity: 0 }}
+                className="relative bg-white text-zinc-900 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl"
+              >
+                <div className="p-5 sm:p-6 border-b border-zinc-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                  <h2 className="text-xl font-bold text-zinc-900">Novo Cliente</h2>
+                  <button type="button" onClick={() => setIsCustomerModalOpen(false)} className="p-2 hover:bg-zinc-100 rounded-full"><X className="w-5 h-5" /></button>
+                </div>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setCustomerFormError('');
+                    const res = await apiFetch('/customers', {
+                      method: 'POST',
+                      body: JSON.stringify(customerForm)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                      setCustomerFormError(data.error || 'Erro ao cadastrar cliente.');
+                      return;
+                    }
+                    setIsCustomerModalOpen(false);
+                    apiFetch('/customers').then(r => r.json()).then(setCustomers);
+                  }}
+                  className="p-5 sm:p-6 space-y-4"
+                >
+                  {customerFormError && (
+                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold">
+                      {customerFormError}
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-bold text-zinc-700 mb-1">Nome *</label>
+                    <input required value={customerForm.name} onChange={e => setCustomerForm({ ...customerForm, name: e.target.value })} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" placeholder="Nome do cliente" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-zinc-700 mb-1">WhatsApp / Telefone *</label>
+                    <input required value={customerForm.phone} onChange={e => setCustomerForm({ ...customerForm, phone: e.target.value.replace(/\D/g, '') })} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" placeholder="11999999999" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-zinc-700 mb-1">E-mail (opcional)</label>
+                    <input type="email" value={customerForm.email} onChange={e => setCustomerForm({ ...customerForm, email: e.target.value })} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" placeholder="cliente@email.com" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-bold text-zinc-700 mb-1">Endereço (opcional)</label>
+                      <input value={customerForm.address} onChange={e => setCustomerForm({ ...customerForm, address: e.target.value })} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" placeholder="Rua / Avenida" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-zinc-700 mb-1">Número</label>
+                      <input value={customerForm.address_number} onChange={e => setCustomerForm({ ...customerForm, address_number: e.target.value })} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" placeholder="123" />
+                    </div>
+                  </div>
+                  {neighborhoods.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-bold text-zinc-700 mb-1">Bairro (opcional)</label>
+                      <select value={customerForm.neighborhood_id} onChange={e => setCustomerForm({ ...customerForm, neighborhood_id: e.target.value })} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500">
+                        <option value="">Selecione...</option>
+                        {neighborhoods.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <button type="submit" className="w-full bg-orange-500 text-white py-3.5 rounded-xl font-bold hover:bg-orange-600 transition-colors">
+                    Salvar Cliente
+                  </button>
                 </form>
               </motion.div>
             </div>

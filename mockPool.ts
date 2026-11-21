@@ -729,33 +729,126 @@ export function createMockPool() {
     // --- CUSTOMERS ---
     if (upper.includes(" CUSTOMERS")) {
       if (upper.startsWith("SELECT")) {
-        const cust = store.customers.find(
-          (c) => String(c.establishment_id) === String(params[0]) && c.phone === params[1] && c.password === params[2]
-        );
-        return [cust ? [cust] : [], []];
+        if (upper.includes("PHONE = ? AND PASSWORD = ?")) {
+          const cust = store.customers.find(
+            (c) => String(c.establishment_id) === String(params[0]) && c.phone === params[1] && c.password === params[2]
+          );
+          return [cust ? [cust] : [], []];
+        }
+        const rows = store.customers
+          .filter((c) => String(c.establishment_id) === String(params[0]))
+          .map((c) => {
+            const nb = store.neighborhoods.find((n) => String(n.id) === String(c.neighborhood_id));
+            return { ...c, neighborhood_name: nb?.name || null };
+          })
+          .sort((a, b) => {
+            const ta = new Date(a.last_order_at || a.created_at || 0).getTime();
+            const tb = new Date(b.last_order_at || b.created_at || 0).getTime();
+            return tb - ta;
+          });
+        return [rows, []];
       }
       if (upper.startsWith("INSERT INTO CUSTOMERS")) {
         const estId = Number(params[0]);
-        const phone = params[2] || params[1];
+        const name = params[1];
+        const phone = params[2];
         const existing = store.customers.find((c) => c.establishment_id === estId && c.phone === phone);
-        if (existing) {
-          if (upper.includes("ON DUPLICATE KEY UPDATE")) {
-            existing.total_orders = (existing.total_orders || 0) + 1;
-            existing.last_order_at = new Date().toISOString();
-            return [{ insertId: existing.id, affectedRows: 1 }, []];
+
+        if (params.length >= 10) {
+          const [, , , email, address, address_number, address_complement, address_reference, neighborhood_id, total] = params;
+          const now = new Date().toISOString();
+          if (existing) {
+            if (upper.includes("ON DUPLICATE KEY UPDATE")) {
+              existing.name = name || existing.name;
+              existing.email = email || existing.email || null;
+              existing.address = address ?? existing.address ?? null;
+              existing.address_number = address_number ?? existing.address_number ?? null;
+              existing.address_complement = address_complement ?? existing.address_complement ?? null;
+              existing.address_reference = address_reference ?? existing.address_reference ?? null;
+              existing.neighborhood_id = neighborhood_id ?? existing.neighborhood_id ?? null;
+              existing.total_orders = (Number(existing.total_orders) || 0) + 1;
+              existing.total_spent = (Number(existing.total_spent) || 0) + (Number(total) || 0);
+              existing.last_order_at = now;
+              return [{ insertId: existing.id, affectedRows: 1 }, []];
+            }
+            throw new Error("Duplicate customer phone");
           }
+          const id = nextIds.customers++;
+          store.customers.push({
+            id,
+            establishment_id: estId,
+            name: name || "Cliente",
+            phone,
+            email: email || null,
+            password: "",
+            address: address || null,
+            address_number: address_number || null,
+            address_complement: address_complement || null,
+            address_reference: address_reference || null,
+            neighborhood_id: neighborhood_id ? Number(neighborhood_id) : null,
+            total_orders: 1,
+            total_spent: Number(total) || 0,
+            created_at: now,
+            last_order_at: now,
+          });
+          return [{ insertId: id, affectedRows: 1 }, []];
+        }
+
+        // Manual admin insert (8+ params) or public register (4 params)
+        if (existing) {
           throw new Error("Duplicate customer phone");
         }
         const id = nextIds.customers++;
-        store.customers.push({
-          id,
-          establishment_id: estId,
-          name: params[1],
-          phone: params[2],
-          password: params[3] || "",
-          created_at: new Date().toISOString(),
-        });
+        const now = new Date().toISOString();
+        if (params.length >= 8) {
+          const [, , , email, address, address_number, address_complement, address_reference, neighborhood_id] = params;
+          store.customers.push({
+            id,
+            establishment_id: estId,
+            name,
+            phone,
+            email: email || null,
+            password: "",
+            address: address || null,
+            address_number: address_number || null,
+            address_complement: address_complement || null,
+            address_reference: address_reference || null,
+            neighborhood_id: neighborhood_id ? Number(neighborhood_id) : null,
+            total_orders: 0,
+            total_spent: 0,
+            created_at: now,
+            last_order_at: null,
+          });
+        } else {
+          store.customers.push({
+            id,
+            establishment_id: estId,
+            name,
+            phone,
+            email: null,
+            password: params[3] || "",
+            address: null,
+            address_number: null,
+            address_complement: null,
+            address_reference: null,
+            neighborhood_id: null,
+            total_orders: 0,
+            total_spent: 0,
+            created_at: now,
+            last_order_at: null,
+          });
+        }
         return [{ insertId: id, affectedRows: 1 }, []];
+      }
+      if (upper.startsWith("DELETE FROM CUSTOMERS")) {
+        if (params.length === 2) {
+          store.customers = store.customers.filter(
+            (c) => !(String(c.id) === String(params[0]) && String(c.establishment_id) === String(params[1]))
+          );
+        } else {
+          store.customers = store.customers.filter((c) => String(c.establishment_id) !== String(params[0]));
+        }
+        return [{ affectedRows: 1 }, []];
       }
     }
 
