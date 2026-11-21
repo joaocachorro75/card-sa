@@ -438,6 +438,79 @@ async function initDatabase() {
     console.log("Demo data seeded");
   }
 
+  // Sincronizar nome, capa e imagens da loja demo em bancos já existentes (sem sobrescrever uploads personalizados)
+  try {
+    const [demoRows] = await connection.execute("SELECT id, name FROM establishments WHERE slug = ?", ["demo"]);
+    const demoEst = (demoRows as any[])[0];
+    if (demoEst) {
+      const demoId = demoEst.id;
+      await connection.execute(
+        "INSERT INTO settings (establishment_id, `key`, value) VALUES (?, 'store_name', ?) ON DUPLICATE KEY UPDATE value = IF(value IS NULL OR TRIM(value) = '', VALUES(value), value)",
+        [demoId, demoEst.name || "MaisQueCardapio Demo"]
+      );
+
+      const [bannerRows] = await connection.execute(
+        "SELECT value FROM settings WHERE establishment_id = ? AND `key` = 'catalog_banner'",
+        [demoId]
+      );
+      const currentBanner = String((bannerRows as any[])[0]?.value || "").trim();
+      if (!currentBanner || (!currentBanner.startsWith("/uploads/") && !currentBanner.startsWith("/assets/demo/"))) {
+        await connection.execute(
+          "INSERT INTO settings (establishment_id, `key`, value) VALUES (?, 'catalog_banner', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)",
+          [demoId, "/assets/demo/banner-demo.jpg"]
+        );
+      }
+
+      const [catRows] = await connection.execute("SELECT id, name FROM categories WHERE establishment_id = ?", [demoId]);
+      let burgersCatId = (catRows as any[]).find((c) => /hamb|lanche|burger/i.test(c.name))?.id || (catRows as any[])[0]?.id || null;
+      let drinksCatId = (catRows as any[]).find((c) => /bebid|drink/i.test(c.name))?.id || burgersCatId;
+      if (!burgersCatId) {
+        const [insCat] = await connection.execute("INSERT INTO categories (establishment_id, name) VALUES (?, ?)", [demoId, "Hambúrgueres"]);
+        burgersCatId = (insCat as any).insertId;
+      }
+      if (!drinksCatId || drinksCatId === burgersCatId) {
+        const existingBebidas = (catRows as any[]).find((c) => /bebid/i.test(c.name));
+        if (existingBebidas) {
+          drinksCatId = existingBebidas.id;
+        } else {
+          const [insDrink] = await connection.execute("INSERT INTO categories (establishment_id, name) VALUES (?, ?)", [demoId, "Bebidas"]);
+          drinksCatId = (insDrink as any).insertId;
+        }
+      }
+
+      const [countRows] = await connection.execute("SELECT COUNT(*) as count FROM products WHERE establishment_id = ?", [demoId]);
+      const existingCount = Number((countRows as any[])[0]?.count || 0);
+
+      const demoDefaults: Array<[string, string, number, string, number | null]> = [
+        ["X-Burger Clássico", "Pão, carne 150g, queijo e maionese da casa.", 25.90, "/assets/demo/x-burger.jpg", burgersCatId],
+        ["X-Bacon Especial", "Pão brioche, blend 180g, cheddar e bacon crocante.", 32.90, "/assets/demo/x-bacon.jpg", burgersCatId],
+        ["Refrigerante Lata", "350ml bem gelado.", 7.00, "/assets/demo/refrigerante.jpg", drinksCatId],
+      ];
+      for (const [prodName, prodDesc, prodPrice, imgPath, catId] of demoDefaults) {
+        const [prodRows] = await connection.execute(
+          "SELECT id, image_url FROM products WHERE establishment_id = ? AND name = ?",
+          [demoId, prodName]
+        );
+        if ((prodRows as any[]).length > 0) {
+          for (const p of prodRows as any[]) {
+            const curImg = String(p.image_url || "").trim();
+            if (!curImg || (!curImg.startsWith("/uploads/") && !curImg.startsWith("/assets/demo/"))) {
+              await connection.execute("UPDATE products SET image_url = ? WHERE id = ?", [imgPath, p.id]);
+            }
+          }
+        } else if (existingCount <= 2) {
+          await connection.execute(
+            "INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)",
+            [demoId, catId, prodName, prodDesc, prodPrice, imgPath]
+          );
+        }
+      }
+      console.log("✅ Loja demo sincronizada com capa e imagens locais");
+    }
+  } catch (e) {
+    console.log("Erro ao sincronizar loja demo:", e);
+  }
+
   connection.release();
   console.log("Database initialized");
   } catch (error) {

@@ -106,13 +106,13 @@ const ReservationForm = ({ tables, onClose, apiFetch }: { tables: any[], onClose
       />
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-        className="relative bg-white text-zinc-900 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+        className="relative bg-white text-zinc-900 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl"
       >
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+        <div className="p-5 sm:p-6 border-b border-zinc-100 flex justify-between items-center sticky top-0 bg-white z-10">
           <h2 className="text-xl font-bold text-zinc-900">Reservar Mesa</h2>
           <button onClick={onClose} aria-label="Fechar" className="p-2 hover:bg-zinc-100 text-zinc-500 rounded-full"><X className="w-6 h-6" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4">
           {statusMsg && (
             <div className={cn(
               "p-3 rounded-xl text-sm font-medium border",
@@ -140,7 +140,7 @@ const ReservationForm = ({ tables, onClose, apiFetch }: { tables: any[], onClose
               </select>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-bold text-zinc-700 mb-1">Data e Hora</label>
               <input required type="datetime-local" value={formData.reservation_time} onChange={e => setFormData({...formData, reservation_time: e.target.value})} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
@@ -195,7 +195,7 @@ const CustomerAuth = ({ establishmentId, onLogin, onClose }: { establishmentId: 
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        className="relative bg-white text-zinc-900 w-full max-w-md rounded-3xl shadow-2xl p-8"
+        className="relative bg-white text-zinc-900 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl p-6 sm:p-8"
       >
         <button onClick={onClose} aria-label="Fechar" className="absolute top-4 right-4 p-2 hover:bg-zinc-100 text-zinc-500 rounded-full"><X className="w-6 h-6" /></button>
         <h2 className="text-2xl font-bold text-zinc-900 mb-2">{isLogin ? 'Entrar na sua conta' : 'Criar conta de cliente'}</h2>
@@ -349,8 +349,8 @@ const Navbar = ({ settings, storeName, slug, customer, onAuthClick, onLogout, on
       settings.catalog_theme === 'dark' ? "bg-zinc-950/90 border-zinc-800" : 
       settings.catalog_theme === 'brand' ? "bg-brand-bg/90 border-zinc-800" : "bg-white/95 border-zinc-200"
     )}>
-      <div className="max-w-5xl mx-auto px-4 py-3 flex justify-between items-center gap-4">
-        <Link to={slug ? `/e/${slug}` : "/"} className="flex items-center gap-3 min-w-0">
+      <div className="max-w-5xl mx-auto px-3.5 sm:px-4 py-3 flex justify-between items-center gap-2 sm:gap-4">
+        <Link to={slug ? `/e/${slug}` : "/"} className="flex items-center gap-2.5 sm:gap-3 min-w-0">
           {settings.store_logo ? (
             <img src={settings.store_logo} alt={displayName} referrerPolicy="no-referrer" className="h-9 w-9 object-cover rounded-xl shrink-0 border border-zinc-200/40" />
           ) : (
@@ -359,19 +359,19 @@ const Navbar = ({ settings, storeName, slug, customer, onAuthClick, onLogout, on
             </div>
           )}
           <span className={cn(
-            "font-extrabold text-lg tracking-tight leading-none truncate",
+            "font-extrabold text-base sm:text-lg tracking-tight leading-none truncate",
             isDark ? "text-white" : "text-zinc-900"
           )}>
             {displayName}
           </span>
         </Link>
-        <div className="flex gap-2.5 items-center shrink-0">
+        <div className="flex gap-2 items-center shrink-0">
           {customer ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <button
                 onClick={onProfileClick}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-colors whitespace-nowrap shrink-0",
+                  "flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border transition-colors whitespace-nowrap shrink-0",
                   isDark
                     ? "bg-zinc-900 border-zinc-800 text-zinc-200 hover:bg-zinc-800"
                     : "bg-zinc-100 border-zinc-200 text-zinc-800 hover:bg-zinc-200"
@@ -398,7 +398,7 @@ const Navbar = ({ settings, storeName, slug, customer, onAuthClick, onLogout, on
             <button
               onClick={onAuthClick}
               className={cn(
-                "text-xs font-semibold px-4 py-2 rounded-xl border transition-colors whitespace-nowrap shrink-0",
+                "text-xs font-semibold px-3 sm:px-4 py-2 rounded-xl border transition-colors whitespace-nowrap shrink-0",
                 isDark
                   ? "bg-zinc-900 border-zinc-800 text-zinc-200 hover:text-white hover:bg-zinc-800"
                   : "bg-zinc-100 border-zinc-200 text-zinc-800 hover:bg-zinc-200"
@@ -791,11 +791,11 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
           settings.catalog_theme === 'dark' ? "bg-zinc-900 border-zinc-800" : 
           settings.catalog_theme === 'brand' ? "bg-brand-surface border-zinc-800" : "bg-white border-zinc-200/80 shadow-sm"
         )}>
-          <div className="flex justify-between items-start gap-4 mb-5">
-            <div className="space-y-1.5 min-w-0">
+          <div className="flex flex-wrap justify-between items-start gap-3 sm:gap-4 mb-5">
+            <div className="space-y-1.5 min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className={cn(
-                  "text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight",
+                  "text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight break-words",
                   isDarkTheme ? "text-white" : "text-zinc-900"
                 )}>
                   {storeTitle}
@@ -835,7 +835,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                   fetchTableSummary(tableNumber);
                   setIsTableComandaOpen(true);
                 }}
-                className="bg-zinc-900 hover:bg-zinc-800 text-white border border-zinc-700 px-3.5 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2 text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer"
+                className="w-full sm:w-auto justify-center bg-zinc-900 hover:bg-zinc-800 text-white border border-zinc-700 px-3.5 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2 text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <ClipboardList className="w-4 h-4 text-orange-400" />
                 <span>Comanda: R$ {(Number(tableSummary.total) || 0).toFixed(2)}</span>
@@ -844,11 +844,11 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
             {settings.enable_reservations === "1" && !tableNumber && (
               <button 
                 onClick={() => setIsReservationModalOpen(true)}
-                className="bg-orange-500 text-white px-4 py-2.5 rounded-xl shadow-sm hover:opacity-95 transition-all active:scale-95 flex items-center gap-2 text-xs font-bold whitespace-nowrap shrink-0"
+                className="w-full sm:w-auto justify-center bg-orange-500 text-white px-4 py-2.5 rounded-xl shadow-sm hover:opacity-95 transition-all active:scale-95 flex items-center gap-2 text-xs font-bold whitespace-nowrap shrink-0"
                 title="Reservar mesa"
               >
                 <Calendar className="w-4 h-4" />
-                <span className="hidden sm:inline">Reservar mesa</span>
+                <span>Reservar mesa</span>
               </button>
             )}
           </div>
@@ -975,7 +975,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                   key={product.id}
                   onClick={() => canOrder && addToCart(product)}
                   className={cn(
-                    "rounded-2xl p-4 border flex gap-4 transition-all group",
+                    "rounded-2xl p-3.5 sm:p-4 border flex gap-3 sm:gap-4 transition-all group",
                     canOrder ? "cursor-pointer active:scale-[0.99] hover:-translate-y-0.5" : "opacity-75 cursor-not-allowed",
                     settings.catalog_theme === 'dark' ? "bg-zinc-900 border-zinc-800 hover:border-zinc-700" : 
                     settings.catalog_theme === 'brand' ? "bg-brand-surface border-zinc-800 hover:border-zinc-700" : "bg-white border-zinc-200/80 hover:border-zinc-300 shadow-sm"
@@ -989,7 +989,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                         </p>
                       )}
                       <h3 className={cn(
-                        "text-base font-bold leading-snug mb-1 group-hover:text-orange-500 transition-colors",
+                        "text-sm sm:text-base font-bold leading-snug mb-1 group-hover:text-orange-500 transition-colors",
                         isDarkTheme ? "text-white" : "text-zinc-900"
                       )}>
                         {product.name}
@@ -1001,12 +1001,12 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                         {product.description}
                       </p>
                     </div>
-                    <div className="flex items-center justify-between gap-2 mt-4">
-                      <span className="text-orange-500 font-extrabold text-lg tabular-nums">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mt-3 sm:mt-4">
+                      <span className="text-orange-500 font-extrabold text-base sm:text-lg tabular-nums">
                         R$ {(parseFloat(product.price) || 0).toFixed(2)}
                       </span>
                       <div className={cn(
-                        "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0",
+                        "px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0",
                         addedProductId === product.id
                           ? "bg-emerald-600 text-white"
                           : canOrder
@@ -1028,7 +1028,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                     </div>
                   </div>
                   <div className={cn(
-                    "relative w-28 h-24 sm:w-32 sm:h-28 rounded-xl overflow-hidden flex-shrink-0 border",
+                    "relative w-22 h-22 sm:w-32 sm:h-28 rounded-xl overflow-hidden flex-shrink-0 border self-center sm:self-auto",
                     isDarkTheme ? "bg-zinc-800 border-zinc-700" : "bg-zinc-100 border-zinc-200/70"
                   )}>
                     {!imgFailed ? (
@@ -1262,7 +1262,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
 
               {cart.length > 0 && (
                 <div className={cn(
-                  "p-6 border-t space-y-4",
+                  "p-4 sm:p-6 border-t space-y-4",
                   settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' ? "border-zinc-800 bg-zinc-900" : "border-zinc-100 bg-zinc-50"
                 )}>
                   {!tableNumber && (
@@ -1323,12 +1323,12 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                       )}
                       <div>
                         <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Pagamento</label>
-                        <div className={cn("grid gap-2", storeInfinitePayEnabled ? "grid-cols-3" : "grid-cols-2")}>
+                        <div className={cn("grid gap-2", storeInfinitePayEnabled ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2")}>
                           <button 
                             type="button"
                             onClick={() => setPaymentMethod('pix')}
                             className={cn(
-                              "p-3 rounded-xl border font-bold text-xs uppercase tracking-widest transition-all",
+                              "p-2.5 sm:p-3 rounded-xl border font-bold text-xs uppercase tracking-wider transition-all",
                               paymentMethod === 'pix' ? "bg-orange-500 text-white border-orange-500" : 
                               settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' ? "bg-zinc-800 border-zinc-700 text-zinc-400" : "bg-white border-zinc-200 text-zinc-600"
                             )}
@@ -1339,7 +1339,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                             type="button"
                             onClick={() => setPaymentMethod('entrega')}
                             className={cn(
-                              "p-3 rounded-xl border font-bold text-xs uppercase tracking-widest transition-all",
+                              "p-2.5 sm:p-3 rounded-xl border font-bold text-xs uppercase tracking-wider transition-all",
                               paymentMethod === 'entrega' ? "bg-orange-500 text-white border-orange-500" : 
                               settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' ? "bg-zinc-800 border-zinc-700 text-zinc-400" : "bg-white border-zinc-200 text-zinc-600"
                             )}
@@ -1351,7 +1351,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                               type="button"
                               onClick={() => setPaymentMethod('infinitepay')}
                               className={cn(
-                                "p-3 rounded-xl border font-bold text-[11px] uppercase tracking-wider transition-all",
+                                "col-span-2 sm:col-span-1 p-2.5 sm:p-3 rounded-xl border font-bold text-[11px] uppercase tracking-wider transition-all",
                                 paymentMethod === 'infinitepay' ? "bg-emerald-600 text-white border-emerald-600" : 
                                 settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' ? "bg-zinc-800 border-zinc-700 text-zinc-400" : "bg-white border-zinc-200 text-zinc-600"
                               )}
@@ -1368,12 +1368,12 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                       <label className="block text-xs font-black text-zinc-500 uppercase tracking-widest">
                         Pagamento na Mesa {tableNumber}
                       </label>
-                      <div className={cn("grid gap-2", storeInfinitePayEnabled ? "grid-cols-3" : "grid-cols-2")}>
+                      <div className={cn("grid gap-2", storeInfinitePayEnabled ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2")}>
                         <button
                           type="button"
                           onClick={() => setPaymentMethod('comanda')}
                           className={cn(
-                            "p-3 rounded-xl border font-bold text-[11px] uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-0.5",
+                            "p-2.5 sm:p-3 rounded-xl border font-bold text-[11px] uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-0.5",
                             paymentMethod === 'comanda'
                               ? "bg-orange-500 text-white border-orange-500"
                               : settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand'
@@ -1388,7 +1388,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                           type="button"
                           onClick={() => setPaymentMethod('pix')}
                           className={cn(
-                            "p-3 rounded-xl border font-bold text-[11px] uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-0.5",
+                            "p-2.5 sm:p-3 rounded-xl border font-bold text-[11px] uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-0.5",
                             paymentMethod === 'pix'
                               ? "bg-orange-500 text-white border-orange-500"
                               : settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand'
@@ -1404,7 +1404,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                             type="button"
                             onClick={() => setPaymentMethod('infinitepay')}
                             className={cn(
-                              "p-3 rounded-xl border font-bold text-[11px] uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-0.5",
+                              "col-span-2 sm:col-span-1 p-2.5 sm:p-3 rounded-xl border font-bold text-[11px] uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-0.5",
                               paymentMethod === 'infinitepay'
                                 ? "bg-emerald-600 text-white border-emerald-600"
                                 : settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand'
@@ -1439,7 +1439,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                   <button 
                     onClick={handleCheckout}
                     disabled={(!tableNumber && orderMode === 'delivery' && !selectedNeighborhood) || settings.is_open === "0"}
-                    className="w-full bg-orange-500 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/20 disabled:opacity-50"
+                    className="w-full bg-orange-500 text-white py-4 sm:py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/20 disabled:opacity-50"
                   >
                     {tableNumber && paymentMethod === 'comanda' ? 'Adicionar à Comanda' : 'Finalizar Pedido'}
                   </button>
@@ -1863,14 +1863,14 @@ const AdminLogin = ({ onLogin, slug }: { onLogin: () => void, slug: string }) =>
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-brand-surface p-10 rounded-[40px] shadow-2xl w-full max-w-md border border-zinc-800"
+        className="bg-brand-surface p-6 sm:p-10 rounded-3xl sm:rounded-[40px] shadow-2xl w-full max-w-md border border-zinc-800"
       >
-        <div className="flex flex-col items-center mb-10">
-          <div className="bg-brand-accent p-4 rounded-2xl mb-6 shadow-xl shadow-brand-accent/20">
+        <div className="flex flex-col items-center mb-8 sm:mb-10">
+          <div className="bg-brand-accent p-4 rounded-2xl mb-5 sm:mb-6 shadow-xl shadow-brand-accent/20">
             <ChefHat className="text-brand-bg w-8 h-8" />
           </div>
-          <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Acesso <span className="text-brand-accent">Admin</span></h1>
-          <p className="text-zinc-500 text-xs font-black uppercase tracking-widest mt-2">Entre com suas credenciais</p>
+          <h1 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tighter text-center">Acesso <span className="text-brand-accent">Admin</span></h1>
+          <p className="text-zinc-500 text-xs font-black uppercase tracking-widest mt-2 text-center">Entre com suas credenciais</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -2014,10 +2014,10 @@ const SubscriptionTab = ({ apiFetch }: { apiFetch: any, settings?: any }) => {
   return (
     <div className="space-y-6 text-zinc-900">
       {/* Status da Assinatura */}
-      <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm p-8">
-        <div className="flex items-center justify-between mb-6">
+      <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm p-5 sm:p-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-zinc-900">Sua Assinatura</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-zinc-900">Sua Assinatura</h2>
             <p className="text-zinc-500 text-sm">Gerencie seu plano e pagamentos</p>
           </div>
           <div className={`px-4 py-2 rounded-full font-bold text-sm ${isPremium ? 'bg-purple-100 text-purple-700' : 'bg-zinc-100 text-zinc-600'}`}>
@@ -2025,7 +2025,7 @@ const SubscriptionTab = ({ apiFetch }: { apiFetch: any, settings?: any }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
           <div className="bg-zinc-50 rounded-xl p-4">
             <p className="text-xs text-zinc-500 uppercase font-bold mb-1">Plano Atual</p>
             <p className="text-xl font-bold text-zinc-900">{subscription?.plan?.name || 'Gratuito'}</p>
@@ -2079,11 +2079,11 @@ const SubscriptionTab = ({ apiFetch }: { apiFetch: any, settings?: any }) => {
 
       {/* Pagamento da Mensalidade */}
       {!isPremium || isExpired ? (
-        <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm p-8">
+        <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm p-5 sm:p-8">
           <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
             <div className="flex items-center gap-3">
               <CreditCard className="w-6 h-6 text-orange-500" />
-              <h3 className="text-xl font-bold text-zinc-900">Pagar / Renovar Mensalidade</h3>
+              <h3 className="text-lg sm:text-xl font-bold text-zinc-900">Pagar / Renovar Mensalidade</h3>
             </div>
             {(pixData || ipData) && (
               <button
@@ -2135,10 +2135,10 @@ const SubscriptionTab = ({ apiFetch }: { apiFetch: any, settings?: any }) => {
                       type="button"
                       onClick={() => handleGeneratePix(selectedMonths)}
                       disabled={generatingPix || generatingIp}
-                      className="flex-1 bg-orange-500 hover:bg-orange-600 text-white px-6 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 bg-orange-500 hover:bg-orange-600 text-white px-4 sm:px-6 py-4 rounded-xl font-bold text-xs sm:text-sm uppercase tracking-wider disabled:opacity-50 transition-colors flex items-center justify-center gap-2 text-center"
                     >
-                      <QrCode className="w-5 h-5" />
-                      {generatingPix ? 'Gerando PIX...' : `Pagar com PIX - R$ ${(baseMonthlyPrice * selectedMonths).toFixed(2)}`}
+                      <QrCode className="w-5 h-5 shrink-0" />
+                      <span>{generatingPix ? 'Gerando PIX...' : `Pagar com PIX - R$ ${(baseMonthlyPrice * selectedMonths).toFixed(2)}`}</span>
                     </button>
                   )}
                   {paymentOptions.infinitepay_enabled && (
@@ -2146,20 +2146,20 @@ const SubscriptionTab = ({ apiFetch }: { apiFetch: any, settings?: any }) => {
                       type="button"
                       onClick={() => handleGenerateInfinitePay(selectedMonths)}
                       disabled={generatingIp || generatingPix}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-4 sm:px-6 py-4 rounded-xl font-bold text-xs sm:text-sm uppercase tracking-wider disabled:opacity-50 transition-colors flex items-center justify-center gap-2 text-center"
                     >
-                      <CreditCard className="w-5 h-5" />
-                      {generatingIp ? 'Gerando Checkout...' : 'Pagar com InfinitePay (Cartão/PIX)'}
+                      <CreditCard className="w-5 h-5 shrink-0" />
+                      <span>{generatingIp ? 'Gerando Checkout...' : 'Pagar com InfinitePay (Cartão/PIX)'}</span>
                     </button>
                   )}
                 </div>
               )}
             </div>
           ) : ipData ? (
-            <div className="space-y-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center">
+            <div className="space-y-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 sm:p-6 text-center">
               <CheckCircle className="w-10 h-10 text-emerald-600 mx-auto" />
               <h4 className="text-lg font-bold text-zinc-900">Link de Checkout InfinitePay Gerado!</h4>
-              <p className="text-sm text-zinc-600">
+              <p className="text-sm text-zinc-600 break-words">
                 NSU: <span className="font-mono font-bold">{ipData.order_nsu}</span> • Valor: <strong>R$ {Number(ipData.amount || 0).toFixed(2)}</strong>
               </p>
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
@@ -2167,15 +2167,15 @@ const SubscriptionTab = ({ apiFetch }: { apiFetch: any, settings?: any }) => {
                   href={ipData.checkout_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-4 px-6 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 sm:py-4 px-5 sm:px-6 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
                 >
-                  <ExternalLink className="w-5 h-5" />
+                  <ExternalLink className="w-5 h-5 shrink-0" />
                   Abrir Checkout InfinitePay
                 </a>
                 <button
                   type="button"
                   onClick={() => handleCopy(ipData.checkout_url)}
-                  className="bg-white border border-emerald-300 text-emerald-800 py-4 px-5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-100 transition-colors"
+                  className="bg-white border border-emerald-300 text-emerald-800 py-3.5 sm:py-4 px-5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-100 transition-colors"
                 >
                   {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
                   {copied ? 'Link Copiado!' : 'Copiar Link'}
@@ -2668,19 +2668,19 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
         slug={slug} 
         onLogout={handleLogout} 
       />
-      <div className="max-w-7xl mx-auto p-4 md:p-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
+      <div className="max-w-7xl mx-auto px-3.5 py-4 sm:p-6 md:p-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-5 sm:gap-6 mb-8 sm:mb-12">
           <div>
-            <h1 className="text-4xl font-black uppercase tracking-tighter">Painel <span className="text-brand-accent">Administrativo</span></h1>
+            <h1 className="text-2xl sm:text-4xl font-black uppercase tracking-tighter">Painel <span className="text-brand-accent">Administrativo</span></h1>
             <p className="text-zinc-500 font-bold uppercase text-xs tracking-widest mt-1">Gerencie seu cardápio e pedidos</p>
           </div>
-          <div className="flex items-center gap-4 w-full md:w-auto">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2.5 sm:gap-3 w-full md:w-auto">
             <Link
               to={`/e/${slug}/admin/assinatura`}
-              className="flex-1 md:flex-none px-6 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl bg-purple-500/10 text-purple-500 border border-purple-500/20 shadow-purple-500/5 hover:bg-purple-500/20"
+              className="px-3 sm:px-5 py-3 sm:py-3.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-2 sm:gap-2.5 transition-all shadow-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-purple-500/5 hover:bg-purple-500/20"
             >
-              <CreditCard className="w-5 h-5" />
-              Assinatura
+              <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+              <span>Assinatura</span>
             </Link>
             <button 
               onClick={async () => {
@@ -2693,14 +2693,14 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                 setSettings(updatedSettings);
               }}
               className={cn(
-                "flex-1 md:flex-none px-8 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl",
+                "px-3 sm:px-6 py-3 sm:py-3.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-2 sm:gap-2.5 transition-all shadow-xl",
                 settings.is_open === "1" 
                   ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shadow-emerald-500/5" 
                   : "bg-red-500/10 text-red-500 border border-red-500/20 shadow-red-500/5"
               )}
             >
-              <Power className="w-5 h-5" />
-              {settings.is_open === "1" ? "Aberto" : "Fechado"}
+              <Power className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+              <span>{settings.is_open === "1" ? "Aberto" : "Fechado"}</span>
             </button>
             <button 
               onClick={() => {
@@ -2708,30 +2708,30 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                 setFormData({ name: '', description: '', price: '', image_url: '', category_id: categories[0]?.id.toString() || '' });
                 setIsProductModalOpen(true);
               }}
-              className="flex-1 md:flex-none bg-brand-accent text-brand-bg px-8 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
+              className="col-span-2 sm:col-span-1 bg-brand-accent text-brand-bg px-4 sm:px-6 py-3 sm:py-3.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-2 sm:gap-2.5 hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
             >
-              <Plus className="w-5 h-5" /> Novo Produto
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /> Novo Produto
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-8 sm:mb-12">
           {[
             { icon: Smartphone, label: "Produtos Ativos", value: products.filter(p => p.is_available).length, color: "blue" },
             { icon: LayoutDashboard, label: "Categorias", value: categories.length, color: "orange" },
             { icon: QrCode, label: hasTablesAndPrint ? "Mesas Ativas" : "Mesas QR & Cupom", value: hasTablesAndPrint ? tables.length : "Premium", color: "emerald" }
           ].map((stat, i) => (
-            <div key={i} className="bg-brand-surface p-8 rounded-3xl border border-zinc-800 shadow-sm group hover:border-brand-accent/30 transition-all">
-              <div className={`bg-brand-accent/10 text-brand-accent p-4 rounded-2xl w-fit mb-6 group-hover:scale-110 transition-transform`}>
-                <stat.icon className="w-7 h-7" />
+            <div key={i} className="bg-brand-surface p-5 sm:p-8 rounded-3xl border border-zinc-800 shadow-sm group hover:border-brand-accent/30 transition-all">
+              <div className={`bg-brand-accent/10 text-brand-accent p-3 sm:p-4 rounded-2xl w-fit mb-4 sm:mb-6 group-hover:scale-110 transition-transform`}>
+                <stat.icon className="w-6 h-6 sm:w-7 sm:h-7" />
               </div>
               <h3 className="text-zinc-500 text-xs font-black uppercase tracking-widest mb-1">{stat.label}</h3>
-              <p className="text-4xl font-black text-white">{stat.value}</p>
+              <p className="text-3xl sm:text-4xl font-black text-white">{stat.value}</p>
             </div>
           ))}
         </div>
 
-        <div className="flex gap-2 mb-8 border-b border-zinc-800 overflow-x-auto no-scrollbar whitespace-nowrap pb-1">
+        <div className="flex gap-1 sm:gap-2 mb-8 border-b border-zinc-800 overflow-x-auto no-scrollbar whitespace-nowrap pb-1">
           {[
             { id: 'orders', label: 'Pedidos', icon: ShoppingCart },
             { id: 'commands', label: commands.length > 0 ? `Comandas (${commands.length})` : 'Comandas', icon: ClipboardList },
@@ -2750,13 +2750,13 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
                 className={cn(
-                  "px-6 py-4 text-sm font-black uppercase tracking-widest flex items-center gap-3 transition-all border-b-2",
+                  "px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-black uppercase tracking-wider sm:tracking-widest flex items-center gap-2 sm:gap-3 transition-all border-b-2 shrink-0",
                   activeTab === tab.id 
                     ? "border-brand-accent text-brand-accent bg-brand-accent/5" 
                     : "border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
                 )}
               >
-                <tab.icon className="w-4 h-4" />
+                <tab.icon className="w-4 h-4 shrink-0" />
                 {tab.label}
               </button>
             );
@@ -2849,28 +2849,28 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold text-zinc-900">Gerenciamento de Mesas</h2>
-                <div className="flex gap-2">
+              <div className="flex flex-wrap justify-between items-center gap-3">
+                <h2 className="text-xl font-bold text-white">Gerenciamento de Mesas</h2>
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                   <button 
                     onClick={() => setIsPrintViewOpen(true)}
-                    className="bg-zinc-100 text-zinc-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-zinc-200"
+                    className="flex-1 sm:flex-none justify-center bg-zinc-100 text-zinc-700 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 hover:bg-zinc-200"
                   >
-                    <QrCode className="w-4 h-4" /> Imprimir Todos
+                    <QrCode className="w-4 h-4 shrink-0" /> Imprimir Todos
                   </button>
                   <button 
                     onClick={() => setIsTableModalOpen(true)}
-                    className="bg-orange-500 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-orange-600"
+                    className="flex-1 sm:flex-none justify-center bg-orange-500 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 hover:bg-orange-600"
                   >
-                    <Plus className="w-4 h-4" /> Adicionar Mesa
+                    <Plus className="w-4 h-4 shrink-0" /> Adicionar Mesa
                   </button>
                 </div>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {tables.map((table) => {
                   const tableUrl = `${window.location.origin}/e/${slug}?mesa=${table.number}`;
                   return (
-                    <div key={table.id} className="bg-white text-zinc-900 p-6 rounded-2xl border border-zinc-100 shadow-sm flex flex-col items-center gap-4 group relative">
+                    <div key={table.id} className="bg-white text-zinc-900 p-5 sm:p-6 rounded-2xl border border-zinc-100 shadow-sm flex flex-col items-center gap-4 group relative">
                       <button 
                         onClick={async () => {
                           if (confirm(`Deletar Mesa ${table.number}?`)) {
@@ -2878,7 +2878,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                             apiFetch('/tables').then(res => res.json()).then(setTables);
                           }
                         }}
-                        className="absolute top-2 right-2 p-1 text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-2 right-2 p-1.5 text-zinc-400 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -2904,7 +2904,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
 
         {activeTab === 'delivery' && (
           <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+            <div className="p-4 sm:p-6 border-b border-zinc-100 flex flex-wrap justify-between items-center gap-3">
               <h2 className="font-bold text-lg text-zinc-900">Taxas por Bairro</h2>
               <button 
                 onClick={() => setIsNeighborhoodModalOpen(true)}
@@ -2915,12 +2915,12 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             </div>
             <div className="divide-y divide-zinc-100">
               {neighborhoods.map(n => (
-                <div key={n.id} className="p-6 flex justify-between items-center hover:bg-zinc-50 transition-colors">
-                  <div>
-                    <h4 className="font-bold text-zinc-900">{n.name}</h4>
+                <div key={n.id} className="p-4 sm:p-6 flex justify-between items-center gap-3 hover:bg-zinc-50 transition-colors">
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-zinc-900 truncate">{n.name}</h4>
                     <p className="text-zinc-500 text-sm">Taxa de entrega</p>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 sm:gap-4 shrink-0">
                     <span className="font-bold text-zinc-900">R$ {(parseFloat(n.delivery_fee) || 0).toFixed(2)}</span>
                     <button 
                       onClick={async () => {
@@ -2942,7 +2942,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
 
         {activeTab === 'categories' && (
           <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+            <div className="p-4 sm:p-6 border-b border-zinc-100 flex flex-wrap justify-between items-center gap-3">
               <h2 className="font-bold text-lg text-zinc-900">Categorias</h2>
               <button 
                 onClick={() => setIsCategoryModalOpen(true)}
@@ -2953,7 +2953,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             </div>
             <div className="divide-y divide-zinc-100">
               {categories.map(c => (
-                <div key={c.id} className="p-6 flex justify-between items-center hover:bg-zinc-50 transition-colors">
+                <div key={c.id} className="p-4 sm:p-6 flex justify-between items-center gap-3 hover:bg-zinc-50 transition-colors">
                   <span className="font-bold text-zinc-900">{c.name}</span>
                   <button 
                     onClick={async () => {
@@ -2974,12 +2974,12 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
 
         {activeTab === 'orders' && (
           <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-zinc-100 flex flex-wrap items-center justify-between gap-4">
+            <div className="p-4 sm:p-6 border-b border-zinc-100 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-zinc-900">Histórico de Pedidos</h2>
                 <p className="text-zinc-500 text-sm">Acompanhe entregas, mesas e pedidos de balcão</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                 {[
                   { id: 'all', label: 'Todos' },
                   { id: 'pickup', label: 'Balcão' },
@@ -3010,9 +3010,9 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                     setCounterItems({});
                     setIsCounterOrderModalOpen(true);
                   }}
-                  className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ml-1"
+                  className="w-full sm:w-auto justify-center bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ml-0 sm:ml-1"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-4 h-4 shrink-0" />
                   {hasTablesAndPrint ? 'Novo Pedido Balcão / Mesa' : 'Novo Pedido Balcão'}
                 </button>
               </div>
@@ -3168,21 +3168,21 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             </div>
           ) : (
           <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-zinc-100 flex flex-wrap justify-between items-center gap-4">
+            <div className="p-4 sm:p-6 border-b border-zinc-100 flex flex-wrap justify-between items-center gap-4">
               <div>
                 <h2 className="text-xl font-bold text-zinc-900">Comandas Abertas</h2>
                 <p className="text-zinc-500 text-sm">Controle de contas abertas por mesa ou balcão</p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => {
                     setCommandForm({ mode: tables.length > 0 ? 'table' : 'pickup', table_id: tables[0]?.id?.toString() || '', waiter_name: '' });
                     setIsCommandModalOpen(true);
                   }}
-                  className="bg-zinc-100 hover:bg-zinc-200 text-zinc-900 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="flex-1 sm:flex-none justify-center bg-zinc-100 hover:bg-zinc-200 text-zinc-900 px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" /> Abrir Comanda
+                  <Plus className="w-4 h-4 shrink-0" /> Abrir Comanda
                 </button>
                 <button
                   type="button"
@@ -3194,9 +3194,9 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                     setCounterItems({});
                     setIsCounterOrderModalOpen(true);
                   }}
-                  className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="flex-1 sm:flex-none justify-center bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" /> Lançar Pedido Balcão / Mesa
+                  <Plus className="w-4 h-4 shrink-0" /> Lançar Pedido Balcão / Mesa
                 </button>
               </div>
             </div>
@@ -3207,7 +3207,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                 <p className="text-zinc-400 text-xs mt-1">Comandas são abertas automaticamente ao pedir pelo QR Code da mesa ou pelo botão acima.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 sm:p-6">
                 {commands.map(cmd => {
                   const cmdCreatedAt = new Date(cmd.created_at).getTime() - 60000;
                   const relatedOrders = orders.filter(o => {
@@ -3224,7 +3224,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                     <div
                       key={cmd.id}
                       className={cn(
-                        "p-5 rounded-2xl border flex flex-col justify-between gap-4",
+                        "p-4 sm:p-5 rounded-2xl border flex flex-col justify-between gap-4",
                         cmd.bill_requested_at
                           ? "bg-amber-50/70 border-amber-400 shadow-sm"
                           : "bg-zinc-50 border-zinc-200"
@@ -3261,7 +3261,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap sm:flex-nowrap gap-2">
                         <button
                           type="button"
                           onClick={() => {
@@ -3278,7 +3278,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                             setCounterItems({});
                             setIsCounterOrderModalOpen(true);
                           }}
-                          className="flex-1 bg-white border border-zinc-300 text-zinc-800 py-2.5 rounded-xl text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer"
+                          className="flex-1 min-w-[100px] bg-white border border-zinc-300 text-zinc-800 px-3 py-2.5 rounded-xl text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer whitespace-nowrap"
                         >
                           + Pedido
                         </button>
@@ -3286,7 +3286,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                           type="button"
                           onClick={() => printCommandReceipt(cmd, relatedOrders, cmdTotal)}
                           title="Imprimir cupom da comanda"
-                          className="px-3 bg-white border border-zinc-300 text-zinc-700 py-2.5 rounded-xl text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer flex items-center justify-center"
+                          className="px-3 bg-white border border-zinc-300 text-zinc-700 py-2.5 rounded-xl text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer flex items-center justify-center shrink-0"
                         >
                           <Printer className="w-4 h-4" />
                         </button>
@@ -3309,7 +3309,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                             apiFetch('/commands').then(res => res.json()).then(setCommands);
                             apiFetch('/orders').then(res => res.json()).then(setOrders);
                           }}
-                          className="flex-1 bg-zinc-900 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors cursor-pointer"
+                          className="flex-1 min-w-[110px] bg-zinc-900 text-white px-3 py-2.5 rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors cursor-pointer whitespace-nowrap"
                         >
                           Fechar Conta
                         </button>
@@ -3415,8 +3415,8 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
         )}
 
         {activeTab === 'settings' && (
-          <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm p-8 max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold text-zinc-900 mb-6">Configurações Gerais</h2>
+          <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm p-5 sm:p-8 max-w-2xl mx-auto">
+            <h2 className="text-xl sm:text-2xl font-bold text-zinc-900 mb-6">Configurações Gerais</h2>
             <form onSubmit={handleSettingsSubmit} className="space-y-6">
               <div className="space-y-4">
                 <div>
@@ -3474,7 +3474,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                           }
                         }
                       }}
-                      className="w-full bg-zinc-50 text-zinc-700 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 disabled:opacity-50"
+                      className="w-full bg-zinc-50 text-zinc-700 border border-zinc-200 p-2.5 sm:p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 text-xs sm:text-sm file:mr-2 sm:file:mr-4 file:py-1 file:px-3 sm:file:px-4 file:rounded-full file:border-0 file:text-xs sm:file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 disabled:opacity-50"
                     />
                     {logoUploading && <p className="text-xs text-zinc-500">Enviando logomarca...</p>}
                     {settings.store_logo && (
@@ -3566,7 +3566,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                             setBannerUploading(false);
                           }
                         }}
-                        className="w-full bg-zinc-50 text-zinc-700 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 disabled:opacity-50"
+                        className="w-full bg-zinc-50 text-zinc-700 border border-zinc-200 p-2.5 sm:p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 text-xs sm:text-sm file:mr-2 sm:file:mr-4 file:py-1 file:px-3 sm:file:px-4 file:rounded-full file:border-0 file:text-xs sm:file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 disabled:opacity-50"
                       />
                       {bannerUploading && <p className="text-xs text-zinc-500">Enviando imagem de capa...</p>}
                       {settings.catalog_banner && (
@@ -3682,7 +3682,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                     </div>
                   </div>
                   <p className="text-[11px] text-zinc-500">
-                    Webhook de confirmação automática: <code className="bg-zinc-100 text-zinc-800 px-1.5 py-0.5 rounded font-mono">{typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/infinitepay` : '/api/webhook/infinitepay'}</code>
+                    Webhook de confirmação automática: <code className="bg-zinc-100 text-zinc-800 px-1.5 py-0.5 rounded font-mono break-all">{typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/infinitepay` : '/api/webhook/infinitepay'}</code>
                   </p>
                 </div>
                 <div className="pt-4 border-t border-zinc-100">
@@ -3767,18 +3767,18 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                           type="button"
                           onClick={handleConnectEvolution}
                           disabled={evoLoading}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2 disabled:opacity-50 transition-colors"
+                          className="flex-1 sm:flex-none justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2 disabled:opacity-50 transition-colors"
                         >
-                          <QrCode className="w-4 h-4" />
+                          <QrCode className="w-4 h-4 shrink-0" />
                           {evoLoading ? 'Processando...' : evolutionStatus?.connected ? 'Reconectar / Status' : 'Criar / Gerar QR Code'}
                         </button>
                         <button
                           type="button"
                           onClick={fetchEvolutionStatus}
                           disabled={evoLoading}
-                          className="bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-700 px-3 py-3 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors"
+                          className="flex-1 sm:flex-none justify-center bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-700 px-3 py-3 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors"
                         >
-                          <RefreshCw className="w-4 h-4" /> Atualizar
+                          <RefreshCw className="w-4 h-4 shrink-0" /> Atualizar
                         </button>
                       </div>
                     </div>
@@ -3906,7 +3906,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
         )}
 
         {activeTab === 'help' && (
-          <div className="bg-white text-zinc-900 rounded-3xl border border-zinc-100 shadow-sm p-8 max-w-4xl mx-auto">
+          <div className="bg-white text-zinc-900 rounded-3xl border border-zinc-100 shadow-sm p-5 sm:p-8 max-w-4xl mx-auto">
             <h2 className="text-2xl font-bold text-zinc-900 mb-6 flex items-center gap-2">
               <HelpCircle className="text-orange-500" /> Manual do Sistema
             </h2>
@@ -3977,19 +3977,19 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
               />
               <motion.div 
                 initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-                className="relative bg-white text-zinc-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden"
+                className="relative bg-white text-zinc-900 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl"
               >
-                <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+                <div className="p-5 sm:p-6 border-b border-zinc-100 flex justify-between items-center sticky top-0 bg-white z-10">
                   <h2 className="text-xl font-bold text-zinc-900">{editingProduct ? 'Editar Produto' : 'Novo Produto'}</h2>
                   <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-zinc-100 rounded-full"><X className="w-6 h-6" /></button>
                 </div>
-                <form onSubmit={handleProductSubmit} className="p-6 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
+                <form onSubmit={handleProductSubmit} className="p-5 sm:p-6 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
                       <label className="block text-sm font-bold text-zinc-700 mb-1">Nome</label>
                       <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <label className="block text-sm font-bold text-zinc-700 mb-1">Descrição</label>
                       <textarea required value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 h-24" />
                     </div>
@@ -4003,7 +4003,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                         {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <label className="block text-sm font-bold text-zinc-700 mb-1">Imagem do Produto</label>
                       <div className="flex gap-2">
                         <input 
@@ -4032,7 +4032,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                               }
                             }
                           }}
-                          className="flex-1 bg-zinc-50 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                          className="w-full flex-1 bg-zinc-50 border border-zinc-200 p-2.5 sm:p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 text-xs sm:text-sm file:mr-2 sm:file:mr-4 file:py-1 file:px-3 sm:file:px-4 file:rounded-full file:border-0 file:text-xs sm:file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
                         />
                       </div>
                       {formData.image_url && (
@@ -4106,22 +4106,22 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
           )}
 
           {isPrintViewOpen && (
-            <div className="fixed inset-0 z-[150] bg-white text-zinc-900 overflow-y-auto p-8">
+            <div className="fixed inset-0 z-[150] bg-white text-zinc-900 overflow-y-auto p-4 sm:p-8">
               <div className="max-w-4xl mx-auto">
-                <div className="flex justify-between items-center mb-8 print:hidden">
-                  <h2 className="text-2xl font-bold">QR Codes das Mesas</h2>
-                  <div className="flex gap-4">
-                    <button onClick={() => window.print()} className="bg-zinc-900 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2">
-                      <Download className="w-5 h-5" /> Imprimir
+                <div className="flex flex-wrap justify-between items-center gap-3 mb-6 sm:mb-8 print:hidden">
+                  <h2 className="text-xl sm:text-2xl font-bold">QR Codes das Mesas</h2>
+                  <div className="flex flex-wrap gap-2 sm:gap-4 w-full sm:w-auto">
+                    <button onClick={() => window.print()} className="flex-1 sm:flex-none justify-center bg-zinc-900 text-white px-5 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2">
+                      <Download className="w-4 h-4 sm:w-5 sm:h-5" /> Imprimir
                     </button>
-                    <button onClick={() => setIsPrintViewOpen(false)} className="bg-zinc-100 text-zinc-600 px-6 py-2 rounded-xl font-bold">
+                    <button onClick={() => setIsPrintViewOpen(false)} className="flex-1 sm:flex-none justify-center bg-zinc-100 text-zinc-600 px-5 py-2.5 rounded-xl font-bold text-sm">
                       Fechar
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
                   {tables.map(table => (
-                    <div key={table.id} className="border-2 border-zinc-200 p-6 rounded-3xl flex flex-col items-center gap-4 text-center">
+                    <div key={table.id} className="border-2 border-zinc-200 p-5 sm:p-6 rounded-3xl flex flex-col items-center gap-4 text-center">
                       <div className="bg-orange-500 p-3 rounded-2xl mb-2">
                         <ChefHat className="text-white w-6 h-6" />
                       </div>
@@ -4132,7 +4132,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                       <div className="p-4 bg-white border border-zinc-100 rounded-2xl shadow-sm">
                         <QRCodeSVG value={`${window.location.origin}/e/${slug}?mesa=${table.number}`} size={180} />
                       </div>
-                      <p className="text-zinc-400 text-[10px] font-mono">{window.location.origin}/e/{slug}?mesa={table.number}</p>
+                      <p className="text-zinc-400 text-[10px] font-mono break-all">{window.location.origin}/e/{slug}?mesa=${table.number}</p>
                     </div>
                   ))}
                 </div>
@@ -4430,7 +4430,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between pt-3 border-t border-zinc-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-zinc-200">
                     <div>
                       <span className="text-xs text-zinc-500 uppercase font-bold block">Total do Pedido</span>
                       <span className="text-2xl font-black text-orange-600">
@@ -4440,7 +4440,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                     <button
                       type="submit"
                       disabled={counterSubmitting || Object.values(counterItems).every(q => q === 0)}
-                      className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3.5 rounded-xl font-bold text-sm uppercase tracking-wider disabled:opacity-50 cursor-pointer"
+                      className="w-full sm:w-auto justify-center bg-orange-500 hover:bg-orange-600 text-white px-6 py-3.5 rounded-xl font-bold text-sm uppercase tracking-wider disabled:opacity-50 cursor-pointer"
                     >
                       {counterSubmitting ? 'Lançando...' : 'Confirmar Lançamento'}
                     </button>
@@ -4698,12 +4698,12 @@ const LandingPage = () => {
     <div className="min-h-screen bg-brand-bg text-white flex flex-col selection:bg-brand-accent selection:text-brand-bg scroll-smooth">
       {/* Top Bar - 3 Zonas Limpas */}
       <header className="sticky top-0 z-50 border-b border-zinc-900 bg-brand-bg/90 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between gap-8">
-          <a href="#" className="flex items-center gap-2.5 shrink-0">
-            <div className="bg-brand-accent p-2 rounded-xl">
-              <ChefHat className="text-brand-bg w-5 h-5" />
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 h-16 sm:h-20 flex items-center justify-between gap-2 sm:gap-8">
+          <a href="#" className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <div className="bg-brand-accent p-1.5 sm:p-2 rounded-xl shrink-0">
+              <ChefHat className="text-brand-bg w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <span className="font-display font-bold text-xl tracking-tight text-white whitespace-nowrap">
+            <span className="font-display font-bold text-base sm:text-xl tracking-tight text-white truncate">
               MaisQueCardapio
             </span>
           </a>
@@ -4723,21 +4723,21 @@ const LandingPage = () => {
             </Link>
           </nav>
 
-          <div className="flex items-center gap-4 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
             <button
               type="button"
               onClick={() => {
                 setLoginError('');
                 setIsLoginModalOpen(true);
               }}
-              className="text-sm font-semibold text-zinc-300 hover:text-white px-3 py-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="text-xs sm:text-sm font-semibold text-zinc-300 hover:text-white px-2.5 sm:px-3 py-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Entrar
             </button>
             <button
               type="button"
               onClick={() => handleSelectPlan('free')}
-              className="bg-brand-accent text-brand-bg px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-brand-accent-hover transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="bg-brand-accent text-brand-bg px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold hover:bg-brand-accent-hover transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Criar Cardápio
             </button>
@@ -4747,14 +4747,14 @@ const LandingPage = () => {
 
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="max-w-7xl mx-auto px-6 pt-14 pb-20 lg:pt-20 lg:pb-24">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-14 items-center">
-            <div className="lg:col-span-6 space-y-7">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-16 lg:pt-20 lg:pb-24">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+            <div className="lg:col-span-6 space-y-6 sm:space-y-7">
               <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand-accent">
                 Pedidos Online · Delivery por Bairro · WhatsApp Automático · Salão Premium
               </p>
 
-              <h1 className="font-display font-bold text-white tracking-tight leading-[1.05] text-[clamp(2.3rem,4.4vw,3.85rem)]">
+              <h1 className="font-display font-bold text-white tracking-tight leading-[1.08] text-[clamp(2rem,4.4vw,3.85rem)]">
                 Pedidos online com delivery por bairro, sem comissão por venda.
               </h1>
 
@@ -4762,21 +4762,21 @@ const LandingPage = () => {
                 Receba pedidos de delivery com taxa automática por bairro, retirada no balcão, pagamento direto via PIX ou InfinitePay e notificações automáticas no WhatsApp em qualquer plano — e escale no Premium com QR Code nas mesas, comandas abertas, impressão de cupom e reservas.
               </p>
 
-              <div className="flex flex-wrap items-center gap-4 pt-1">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4 pt-1">
                 <button
                   type="button"
                   onClick={() => handleSelectPlan('free')}
-                  className="bg-brand-accent text-brand-bg px-7 py-4 rounded-xl font-bold text-sm sm:text-base hover:bg-brand-accent-hover transition-colors inline-flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                  className="w-full sm:w-auto justify-center bg-brand-accent text-brand-bg px-5 sm:px-7 py-3.5 sm:py-4 rounded-xl font-bold text-sm sm:text-base hover:bg-brand-accent-hover transition-colors inline-flex items-center gap-2 cursor-pointer"
                 >
-                  Começar no Plano Gratuito
-                  <ChevronRight className="w-4 h-4" />
+                  <span>Começar no Plano Gratuito</span>
+                  <ChevronRight className="w-4 h-4 shrink-0" />
                 </button>
                 <Link
                   to="/e/demo"
-                  className="border border-zinc-800 bg-zinc-950 text-white px-7 py-4 rounded-xl font-semibold text-sm sm:text-base hover:border-zinc-700 hover:bg-zinc-900 transition-colors inline-flex items-center gap-2 whitespace-nowrap"
+                  className="w-full sm:w-auto justify-center border border-zinc-800 bg-zinc-950 text-white px-5 sm:px-7 py-3.5 sm:py-4 rounded-xl font-semibold text-sm sm:text-base hover:border-zinc-700 hover:bg-zinc-900 transition-colors inline-flex items-center gap-2"
                 >
-                  <Eye className="w-4 h-4 text-brand-accent" />
-                  Explorar Loja Demo
+                  <Eye className="w-4 h-4 text-brand-accent shrink-0" />
+                  <span>Explorar Loja Demo</span>
                 </Link>
               </div>
 
@@ -4964,7 +4964,7 @@ const LandingPage = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 divide-x divide-zinc-800 border-t border-zinc-800 bg-zinc-950">
+                <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-zinc-800 border-t border-zinc-800 bg-zinc-950">
                   <div className="p-4">
                     <p className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">Pedidos Online</p>
                     <p className="text-sm font-semibold text-white mt-0.5">Delivery por Bairro</p>
@@ -4984,8 +4984,8 @@ const LandingPage = () => {
         </section>
 
         {/* Capabilities Bento Grid */}
-        <section id="recursos" className="border-t border-zinc-900 py-20 lg:py-24">
-          <div className="max-w-7xl mx-auto px-6">
+        <section id="recursos" className="border-t border-zinc-900 py-16 lg:py-24">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
               <div>
                 <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand-accent mb-3">
@@ -5005,7 +5005,7 @@ const LandingPage = () => {
                 <div
                   key={cap.num}
                   className={cn(
-                    'rounded-2xl border border-zinc-800/90 bg-zinc-950/80 p-7 flex flex-col justify-between gap-6 hover:border-zinc-700 transition-colors',
+                    'rounded-2xl border border-zinc-800/90 bg-zinc-950/80 p-5 sm:p-7 flex flex-col justify-between gap-5 sm:gap-6 hover:border-zinc-700 transition-colors',
                     cap.span
                   )}
                 >
@@ -5033,8 +5033,8 @@ const LandingPage = () => {
         </section>
 
         {/* How It Works */}
-        <section id="como-funciona" className="border-t border-zinc-900 py-20 lg:py-24 bg-zinc-950/40">
-          <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+        <section id="como-funciona" className="border-t border-zinc-900 py-16 lg:py-24 bg-zinc-950/40">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
             <div className="lg:col-span-5 space-y-8">
               <div>
                 <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand-accent mb-3">
@@ -5125,7 +5125,7 @@ const LandingPage = () => {
                   {previewAdminTab === 'orders' ? (
                     <>
                       <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold">
                           <span className="px-2.5 py-1 rounded-lg bg-zinc-900 text-white">Todos (3)</span>
                           <span className="px-2.5 py-1 rounded-lg bg-white border border-zinc-200 text-zinc-700">Delivery</span>
                           <span className="px-2.5 py-1 rounded-lg bg-white border border-zinc-200 text-zinc-700">Balcão</span>
@@ -5150,7 +5150,7 @@ const LandingPage = () => {
                               2x X-Burger Clássico, 1x Refrigerante Lata · Mariana Silva
                             </p>
                           </div>
-                          <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
                             <span className="text-sm font-extrabold text-zinc-900 tabular-nums">R$ 63,80</span>
                             <span className="px-2.5 py-1 rounded-lg bg-orange-50 border border-orange-200 text-orange-700 text-xs font-semibold">
                               Em Preparo
@@ -5176,7 +5176,7 @@ const LandingPage = () => {
                               1x X-Bacon Especial · Rafael Souza
                             </p>
                           </div>
-                          <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
                             <span className="text-sm font-extrabold text-zinc-900 tabular-nums">R$ 32,90</span>
                             <span className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
                               Pronto p/ Retirada
@@ -5202,7 +5202,7 @@ const LandingPage = () => {
                               2x X-Burger Clássico, 2x Refrigerante Lata
                             </p>
                           </div>
-                          <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
                             <span className="text-sm font-extrabold text-zinc-900 tabular-nums">R$ 65,80</span>
                             <span className="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
                               Confirmado
@@ -5260,9 +5260,9 @@ const LandingPage = () => {
         </section>
 
         {/* Honest Pricing & Feature Comparison */}
-        <section id="planos" className="border-t border-zinc-900 py-20 lg:py-24">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="max-w-2xl mb-14">
+        <section id="planos" className="border-t border-zinc-900 py-16 lg:py-24">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+            <div className="max-w-2xl mb-10 sm:mb-14">
               <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand-accent mb-3">
                 Planos Transparentes
               </p>
@@ -5274,9 +5274,9 @@ const LandingPage = () => {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-14">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10 sm:mb-14">
               {/* Plano Gratuito */}
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-8 sm:p-10 flex flex-col justify-between">
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-6 sm:p-10 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between gap-4 mb-3">
                     <h3 className="font-display text-2xl font-bold text-white">{freePlan.name}</h3>
@@ -5336,7 +5336,7 @@ const LandingPage = () => {
               </div>
 
               {/* Plano Premium */}
-              <div className="rounded-3xl border border-brand-accent bg-zinc-950 p-8 sm:p-10 flex flex-col justify-between relative shadow-xl shadow-brand-accent/5">
+              <div className="rounded-3xl border border-brand-accent bg-zinc-950 p-6 sm:p-10 flex flex-col justify-between relative shadow-xl shadow-brand-accent/5">
                 <div>
                   <div className="flex items-center justify-between gap-4 mb-3">
                     <h3 className="font-display text-2xl font-bold text-white">{premiumPlan.name}</h3>
@@ -5394,7 +5394,7 @@ const LandingPage = () => {
 
             {/* Tabela Comparativa */}
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-              <div className="px-6 py-4 border-b border-zinc-800 bg-zinc-900/40">
+              <div className="px-4 sm:px-6 py-4 border-b border-zinc-800 bg-zinc-900/40">
                 <h3 className="font-display font-bold text-base text-white">
                   Comparativo detalhado por recurso
                 </h3>
@@ -5403,16 +5403,16 @@ const LandingPage = () => {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-zinc-800 text-xs font-mono uppercase tracking-wider text-zinc-400">
-                      <th className="py-3.5 px-6">Recurso</th>
-                      <th className="py-3.5 px-6 text-center w-44">{freePlan.name}</th>
-                      <th className="py-3.5 px-6 text-center w-44 text-brand-accent">{premiumPlan.name}</th>
+                      <th className="py-3.5 px-4 sm:px-6">Recurso</th>
+                      <th className="py-3.5 px-3 sm:px-6 text-center w-24 sm:w-44">{freePlan.name}</th>
+                      <th className="py-3.5 px-3 sm:px-6 text-center w-24 sm:w-44 text-brand-accent">{premiumPlan.name}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-900 text-sm">
+                  <tbody className="divide-y divide-zinc-900 text-xs sm:text-sm">
                     {comparisonRows.map((row) => (
                       <tr key={row.feature} className="hover:bg-zinc-900/30 transition-colors">
-                        <td className="py-3.5 px-6 text-zinc-300 font-medium">{row.feature}</td>
-                        <td className="py-3.5 px-6 text-center">
+                        <td className="py-3.5 px-4 sm:px-6 text-zinc-300 font-medium">{row.feature}</td>
+                        <td className="py-3.5 px-3 sm:px-6 text-center">
                           {typeof row.free === 'string' ? (
                             <span className="font-semibold text-zinc-200">{row.free}</span>
                           ) : row.free ? (
@@ -5421,7 +5421,7 @@ const LandingPage = () => {
                             <X className="w-4 h-4 text-zinc-600 mx-auto" />
                           )}
                         </td>
-                        <td className="py-3.5 px-6 text-center">
+                        <td className="py-3.5 px-3 sm:px-6 text-center">
                           {typeof row.premium === 'string' ? (
                             <span className="font-bold text-brand-accent">{row.premium}</span>
                           ) : row.premium ? (
@@ -5440,14 +5440,14 @@ const LandingPage = () => {
         </section>
 
         {/* Registration Section */}
-        <section id="register" className="border-t border-zinc-900 py-20 lg:py-24 bg-zinc-950/40">
-          <div className="max-w-6xl mx-auto px-6">
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-8 sm:p-12 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-start">
+        <section id="register" className="border-t border-zinc-900 py-16 lg:py-24 bg-zinc-950/40">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5 sm:p-12 grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10 lg:gap-12 items-start">
               <div className="lg:col-span-5 space-y-6">
                 <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand-accent">
                   Cadastro da Loja
                 </p>
-                <h2 className="font-display font-bold text-3xl sm:text-4xl tracking-tight text-white leading-tight">
+                <h2 className="font-display font-bold text-2xl sm:text-4xl tracking-tight text-white leading-tight">
                   Coloque sua loja no ar em menos de 1 minuto.
                 </h2>
                 <p className="text-sm sm:text-base text-zinc-400 leading-relaxed">
@@ -5470,13 +5470,13 @@ const LandingPage = () => {
                 </ul>
               </div>
 
-              <div className="lg:col-span-7 bg-brand-bg rounded-2xl border border-zinc-800 p-6 sm:p-8">
+              <div className="lg:col-span-7 bg-brand-bg rounded-2xl border border-zinc-800 p-4 sm:p-8">
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div>
                     <label className="block font-mono text-[11px] uppercase tracking-wider text-zinc-400 mb-2">
                       Plano Escolhido
                     </label>
-                    <div className="grid grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <button
                         type="button"
                         onClick={() => setSelectedPlan('free')}
@@ -5601,8 +5601,8 @@ const LandingPage = () => {
         </section>
       </main>
 
-      <footer className="border-t border-zinc-900 bg-brand-bg py-10 px-6">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+      <footer className="border-t border-zinc-900 bg-brand-bg py-10 px-4 sm:px-6">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6 text-center md:text-left">
           <div className="flex items-center gap-2.5">
             <div className="bg-brand-accent/15 p-2 rounded-xl">
               <ChefHat className="text-brand-accent w-4 h-4" />
@@ -5610,7 +5610,7 @@ const LandingPage = () => {
             <span className="font-display font-bold text-lg tracking-tight text-white">MaisQueCardapio</span>
           </div>
           <p className="text-zinc-500 text-xs sm:text-sm">© 2026 MaisQueCardapio. Sistema de cardápio digital, mesas e delivery.</p>
-          <div className="flex items-center gap-6 text-xs font-mono uppercase tracking-wider">
+          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-xs font-mono uppercase tracking-wider">
             <a href="#recursos" className="text-zinc-400 hover:text-white transition-colors">Recursos</a>
             <a href="#planos" className="text-zinc-400 hover:text-white transition-colors">Planos</a>
             <Link to="/e/demo" className="text-zinc-400 hover:text-white transition-colors">Demo</Link>
@@ -5633,7 +5633,7 @@ const LandingPage = () => {
               initial={{ scale: 0.94, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.94, opacity: 0 }}
-              className="relative bg-brand-surface w-full max-w-md rounded-3xl shadow-2xl p-8 sm:p-10 border border-zinc-800"
+              className="relative bg-brand-surface w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl p-6 sm:p-10 border border-zinc-800"
             >
               <button
                 type="button"
@@ -5702,7 +5702,7 @@ const LandingPage = () => {
               initial={{ scale: 0.94, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.94, opacity: 0 }}
-              className="relative bg-brand-surface w-full max-w-lg rounded-3xl shadow-2xl p-8 sm:p-10 border border-brand-accent/30"
+              className="relative bg-brand-surface w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl p-6 sm:p-10 border border-brand-accent/30"
             >
               <div className="text-center mb-7">
                 <div className="bg-brand-accent/15 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5">
@@ -6337,23 +6337,23 @@ const SuperAdmin = () => {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto p-6 space-y-10">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="bg-brand-surface p-6 rounded-3xl border border-zinc-800">
-            <p className="text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Total Lojas</p>
-            <p className="text-4xl font-black">{establishments.length}</p>
+      <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-8 sm:space-y-10">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
+          <div className="bg-brand-surface p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-zinc-800">
+            <p className="text-[11px] sm:text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Total Lojas</p>
+            <p className="text-2xl sm:text-4xl font-black">{establishments.length}</p>
           </div>
-          <div className="bg-brand-surface p-6 rounded-3xl border border-zinc-800">
-            <p className="text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Planos Ativos</p>
-            <p className="text-4xl font-black">{plans.length}</p>
+          <div className="bg-brand-surface p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-zinc-800">
+            <p className="text-[11px] sm:text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Planos Ativos</p>
+            <p className="text-2xl sm:text-4xl font-black">{plans.length}</p>
           </div>
-          <div className="bg-brand-surface p-6 rounded-3xl border border-zinc-800">
-            <p className="text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Pagamentos Listados</p>
-            <p className="text-4xl font-black text-orange-500">{payments.length}</p>
+          <div className="bg-brand-surface p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-zinc-800">
+            <p className="text-[11px] sm:text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">Pagamentos Listados</p>
+            <p className="text-2xl sm:text-4xl font-black text-orange-500">{payments.length}</p>
           </div>
-          <div className="bg-brand-surface p-6 rounded-3xl border border-zinc-800">
-            <p className="text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">WhatsApp SuperAdmin</p>
-            <p className={cn("text-lg font-black mt-2", saEvoStatus?.connected ? "text-emerald-400" : "text-zinc-400")}>
+          <div className="bg-brand-surface p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-zinc-800">
+            <p className="text-[11px] sm:text-xs text-zinc-500 uppercase font-black tracking-widest mb-1">WhatsApp SuperAdmin</p>
+            <p className={cn("text-sm sm:text-lg font-black mt-2", saEvoStatus?.connected ? "text-emerald-400" : "text-zinc-400")}>
               {saEvoStatus?.connected ? 'Conectado' : 'Desconectado'}
             </p>
           </div>
@@ -6362,8 +6362,8 @@ const SuperAdmin = () => {
         {(superTab === 'overview' || superTab === 'payments') && (
           <section>
             <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
-              <h2 className="text-3xl font-black uppercase tracking-tighter flex items-center gap-3">
-                <DollarSign className="text-orange-500" /> Pagamentos de Contratantes
+              <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tighter flex items-center gap-2.5 sm:gap-3">
+                <DollarSign className="text-orange-500 shrink-0" /> Pagamentos de Contratantes
               </h2>
               <div className="flex flex-wrap gap-2">
                 {(['pending', 'confirmed', 'rejected', 'all'] as const).map((st) => (
@@ -6455,17 +6455,17 @@ const SuperAdmin = () => {
 
         {superTab === 'overview' && (
           <section>
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-3xl font-black uppercase tracking-tighter">Estabelecimentos</h2>
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-6 sm:mb-8">
+              <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tighter">Estabelecimentos</h2>
               <button 
                 onClick={() => {
                   setEditingEst(null);
                   setNewEstForm({ name: '', slug: '', owner_whatsapp: '', password: '', plan_id: '', status: 'active' });
                   setIsNewEstModalOpen(true);
                 }}
-                className="bg-brand-accent text-brand-bg px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-brand-accent/20 flex items-center gap-2"
+                className="w-full sm:w-auto justify-center bg-brand-accent text-brand-bg px-5 sm:px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-brand-accent/20 flex items-center gap-2"
               >
-                <Plus className="w-4 h-4" /> Novo Estabelecimento
+                <Plus className="w-4 h-4 shrink-0" /> Novo Estabelecimento
               </button>
             </div>
             <div className="bg-brand-surface rounded-[32px] border border-zinc-800 overflow-x-auto">
@@ -6524,25 +6524,25 @@ const SuperAdmin = () => {
 
         {(superTab === 'overview' || superTab === 'plans') && (
           <section>
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-3xl font-black uppercase tracking-tighter">Planos</h2>
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-6 sm:mb-8">
+              <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tighter">Planos</h2>
               <button 
                 onClick={() => {
                   setEditingPlan(null);
                   setPlanForm({ name: '', price: '', max_products: '', enable_ai: false, enable_reservations: false, enable_automation: true, enable_tables: false });
                   setIsPlanModalOpen(true);
                 }}
-                className="bg-brand-accent text-brand-bg px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-brand-accent/20 flex items-center gap-2"
+                className="w-full sm:w-auto justify-center bg-brand-accent text-brand-bg px-5 sm:px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-brand-accent/20 flex items-center gap-2"
               >
-                <Plus className="w-4 h-4" /> Novo Plano
+                <Plus className="w-4 h-4 shrink-0" /> Novo Plano
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {plans.map(plan => (
-                <div key={plan.id} className="bg-brand-surface p-8 rounded-[32px] border border-zinc-800 flex flex-col group hover:border-brand-accent/50 transition-all">
-                  <div className="flex justify-between items-start mb-6">
+                <div key={plan.id} className="bg-brand-surface p-6 sm:p-8 rounded-3xl sm:rounded-[32px] border border-zinc-800 flex flex-col group hover:border-brand-accent/50 transition-all">
+                  <div className="flex justify-between items-start gap-3 mb-6">
                     <h3 className="text-xl font-black uppercase tracking-tight">{plan.name}</h3>
-                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
                       <button 
                         onClick={() => {
                           setEditingPlan(plan);
@@ -6599,13 +6599,13 @@ const SuperAdmin = () => {
         {superTab === 'settings' && (
           <section className="space-y-8">
             <div>
-              <h2 className="text-3xl font-black uppercase tracking-tighter">Configurações Globais do Sistema</h2>
+              <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tighter">Configurações Globais do Sistema</h2>
               <p className="text-zinc-400 text-sm mt-1">Configure recebimento de mensalidades (PIX e InfinitePay), chave geral da Evolution API para os contratantes e sua instância de notificações.</p>
             </div>
 
             <form onSubmit={handleSavePlatformSettings} className="space-y-8">
               {/* Card 1: Forma de Pagamento de Contratantes */}
-              <div className="bg-brand-surface p-8 rounded-[32px] border border-zinc-800 space-y-6">
+              <div className="bg-brand-surface p-5 sm:p-8 rounded-3xl sm:rounded-[32px] border border-zinc-800 space-y-6">
                 <div className="flex items-center gap-3">
                   <div className="bg-orange-500/20 p-3 rounded-2xl">
                     <CreditCard className="w-6 h-6 text-orange-500" />
@@ -6716,7 +6716,7 @@ const SuperAdmin = () => {
               </div>
 
               {/* Card 2: Evolution API Global */}
-              <div className="bg-brand-surface p-8 rounded-[32px] border border-zinc-800 space-y-6">
+              <div className="bg-brand-surface p-5 sm:p-8 rounded-3xl sm:rounded-[32px] border border-zinc-800 space-y-6">
                 <div className="flex items-center gap-3">
                   <div className="bg-emerald-500/20 p-3 rounded-2xl">
                     <Smartphone className="w-6 h-6 text-emerald-400" />
@@ -6763,7 +6763,7 @@ const SuperAdmin = () => {
               </div>
 
               {/* Card 3: Instância do SuperAdmin e Alertas */}
-              <div className="bg-brand-surface p-8 rounded-[32px] border border-zinc-800 space-y-6">
+              <div className="bg-brand-surface p-5 sm:p-8 rounded-3xl sm:rounded-[32px] border border-zinc-800 space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="bg-indigo-500/20 p-3 rounded-2xl">
@@ -6838,18 +6838,18 @@ const SuperAdmin = () => {
                     type="button"
                     onClick={handleConnectSaEvolution}
                     disabled={saEvoLoading}
-                    className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 disabled:opacity-50"
+                    className="w-full sm:w-auto justify-center bg-emerald-500 hover:bg-emerald-600 text-zinc-950 px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 disabled:opacity-50"
                   >
-                    <QrCode className="w-4 h-4" />
+                    <QrCode className="w-4 h-4 shrink-0" />
                     {saEvoLoading ? 'Conectando...' : saEvoStatus?.connected ? 'Verificar / Reconectar' : 'Conectar Instância via QR Code'}
                   </button>
                   <button
                     type="button"
                     onClick={() => fetchSaEvolutionStatus(authToken)}
                     disabled={saEvoLoading}
-                    className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-3 rounded-2xl font-bold text-xs flex items-center gap-2"
+                    className="flex-1 sm:flex-none justify-center bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-3 rounded-2xl font-bold text-xs flex items-center gap-2"
                   >
-                    <RefreshCw className="w-4 h-4" /> Atualizar Status
+                    <RefreshCw className="w-4 h-4 shrink-0" /> Atualizar Status
                   </button>
                   {saEvoStatus?.connected && (
                     <>
@@ -6857,15 +6857,15 @@ const SuperAdmin = () => {
                         type="button"
                         onClick={handleTestSaEvolution}
                         disabled={saEvoLoading}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-2xl font-bold text-xs flex items-center gap-2"
+                        className="flex-1 sm:flex-none justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-2xl font-bold text-xs flex items-center gap-2"
                       >
-                        <MessageCircle className="w-4 h-4" /> Testar Notificação
+                        <MessageCircle className="w-4 h-4 shrink-0" /> Testar Notificação
                       </button>
                       <button
                         type="button"
                         onClick={handleDisconnectSaEvolution}
                         disabled={saEvoLoading}
-                        className="bg-red-500/15 hover:bg-red-500/25 text-red-400 px-4 py-3 rounded-2xl font-bold text-xs"
+                        className="flex-1 sm:flex-none justify-center bg-red-500/15 hover:bg-red-500/25 text-red-400 px-4 py-3 rounded-2xl font-bold text-xs"
                       >
                         Desconectar
                       </button>
@@ -6875,9 +6875,9 @@ const SuperAdmin = () => {
                     type="button"
                     onClick={handleCheckRenewalsNow}
                     disabled={renewalLoading}
-                    className="bg-zinc-800 hover:bg-zinc-700 text-orange-400 px-4 py-3 rounded-2xl font-bold text-xs flex items-center gap-2 ml-auto"
+                    className="w-full sm:w-auto justify-center bg-zinc-800 hover:bg-zinc-700 text-orange-400 px-4 py-3 rounded-2xl font-bold text-xs flex items-center gap-2 ml-0 sm:ml-auto"
                   >
-                    <Clock className="w-4 h-4" /> {renewalLoading ? 'Verificando...' : 'Verificar Renovações Agora'}
+                    <Clock className="w-4 h-4 shrink-0" /> {renewalLoading ? 'Verificando...' : 'Verificar Renovações Agora'}
                   </button>
                 </div>
 
@@ -6935,7 +6935,7 @@ const SuperAdmin = () => {
               <button
                 type="submit"
                 disabled={settingsSaving}
-                className="w-full bg-brand-accent text-brand-bg py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20 disabled:opacity-50"
+                className="w-full bg-brand-accent text-brand-bg py-4 sm:py-5 px-4 rounded-2xl text-xs sm:text-sm font-black uppercase tracking-wider sm:tracking-widest hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20 disabled:opacity-50"
               >
                 {settingsSaving ? 'Salvando...' : 'Salvar Todas as Configurações Globais'}
               </button>
@@ -6948,8 +6948,8 @@ const SuperAdmin = () => {
         {isPlanModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsPlanModalOpen(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-brand-surface border border-zinc-800 p-10 rounded-[40px] shadow-2xl w-full max-w-md">
-              <h2 className="text-3xl font-black mb-8 uppercase tracking-tighter">{editingPlan ? 'Editar Plano' : 'Novo Plano'}</h2>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-brand-surface border border-zinc-800 p-6 sm:p-10 rounded-3xl sm:rounded-[40px] shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+              <h2 className="text-2xl sm:text-3xl font-black mb-6 sm:mb-8 uppercase tracking-tighter">{editingPlan ? 'Editar Plano' : 'Novo Plano'}</h2>
               <form onSubmit={handlePlanSubmit} className="space-y-6">
                 <div>
                   <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Nome</label>
@@ -6979,9 +6979,9 @@ const SuperAdmin = () => {
                     <span className="text-sm font-bold uppercase tracking-tight">Reservas Online</span>
                   </label>
                 </div>
-                <div className="flex gap-4 pt-4">
-                  <button type="button" onClick={() => setIsPlanModalOpen(false)} className="flex-1 bg-zinc-800 text-white py-5 rounded-2xl font-black uppercase tracking-widest">Cancelar</button>
-                  <button type="submit" className="flex-1 bg-brand-accent text-brand-bg py-5 rounded-2xl font-black uppercase tracking-widest">Salvar</button>
+                <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4 pt-4">
+                  <button type="button" onClick={() => setIsPlanModalOpen(false)} className="flex-1 bg-zinc-800 text-white py-3.5 sm:py-5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest">Cancelar</button>
+                  <button type="submit" className="flex-1 bg-brand-accent text-brand-bg py-3.5 sm:py-5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest">Salvar</button>
                 </div>
               </form>
             </motion.div>
@@ -6990,8 +6990,8 @@ const SuperAdmin = () => {
         {isEstModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsEstModalOpen(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-brand-surface border border-zinc-800 p-10 rounded-[40px] shadow-2xl w-full max-w-md">
-              <h2 className="text-3xl font-black mb-8 uppercase tracking-tighter">Editar Loja</h2>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-brand-surface border border-zinc-800 p-6 sm:p-10 rounded-3xl sm:rounded-[40px] shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+              <h2 className="text-2xl sm:text-3xl font-black mb-6 sm:mb-8 uppercase tracking-tighter">Editar Loja</h2>
               <form onSubmit={handleEstSubmit} className="space-y-6">
                 <div>
                   <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Plano</label>
@@ -7007,9 +7007,9 @@ const SuperAdmin = () => {
                     <option value="pending">Pendente</option>
                   </select>
                 </div>
-                <div className="flex gap-4 pt-4">
-                  <button type="button" onClick={() => setIsEstModalOpen(false)} className="flex-1 bg-zinc-800 text-white py-5 rounded-2xl font-black uppercase tracking-widest">Cancelar</button>
-                  <button type="submit" className="flex-1 bg-brand-accent text-brand-bg py-5 rounded-2xl font-black uppercase tracking-widest">Salvar</button>
+                <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4 pt-4">
+                  <button type="button" onClick={() => setIsEstModalOpen(false)} className="flex-1 bg-zinc-800 text-white py-3.5 sm:py-5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest">Cancelar</button>
+                  <button type="submit" className="flex-1 bg-brand-accent text-brand-bg py-3.5 sm:py-5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest">Salvar</button>
                 </div>
               </form>
             </motion.div>
@@ -7018,8 +7018,8 @@ const SuperAdmin = () => {
         {isNewEstModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsNewEstModalOpen(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-brand-surface border border-zinc-800 p-10 rounded-[40px] shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-              <h2 className="text-3xl font-black mb-8 uppercase tracking-tighter">Nova Loja</h2>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-brand-surface border border-zinc-800 p-6 sm:p-10 rounded-3xl sm:rounded-[40px] shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+              <h2 className="text-2xl sm:text-3xl font-black mb-6 sm:mb-8 uppercase tracking-tighter">Nova Loja</h2>
               <form onSubmit={handleNewEstSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-black text-zinc-500 uppercase mb-2 tracking-widest">Nome da Loja</label>
@@ -7052,9 +7052,9 @@ const SuperAdmin = () => {
                     <option value="pending">Pendente</option>
                   </select>
                 </div>
-                <div className="flex gap-4 pt-4">
-                  <button type="button" onClick={() => setIsNewEstModalOpen(false)} className="flex-1 bg-zinc-800 text-white py-5 rounded-2xl font-black uppercase tracking-widest">Cancelar</button>
-                  <button type="submit" className="flex-1 bg-brand-accent text-brand-bg py-5 rounded-2xl font-black uppercase tracking-widest">Criar</button>
+                <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4 pt-4">
+                  <button type="button" onClick={() => setIsNewEstModalOpen(false)} className="flex-1 bg-zinc-800 text-white py-3.5 sm:py-5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest">Cancelar</button>
+                  <button type="submit" className="flex-1 bg-brand-accent text-brand-bg py-3.5 sm:py-5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest">Criar</button>
                 </div>
               </form>
             </motion.div>
@@ -7381,12 +7381,12 @@ const OrderTracking = ({ slug }: { slug: string }) => {
                   href={order.infinitepay_checkout_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 px-5 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-900/30"
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 sm:py-4 px-4 sm:px-5 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-900/30 text-center"
                 >
-                  <ExternalLink className="w-5 h-5" />
+                  <ExternalLink className="w-5 h-5 shrink-0" />
                   Abrir Checkout InfinitePay
                 </a>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <button
                     type="button"
                     onClick={handleCopyInfinitePay}
@@ -7461,9 +7461,9 @@ const OrderTracking = ({ slug }: { slug: string }) => {
                   const whatsappUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(message)}`;
                   window.open(whatsappUrl, '_blank');
                 }}
-                className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+                className="w-full bg-green-500 hover:bg-green-600 text-white py-3.5 sm:py-4 px-4 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-colors text-center"
               >
-                <MessageCircle className="w-5 h-5" />
+                <MessageCircle className="w-5 h-5 shrink-0" />
                 Enviar Comprovante pelo WhatsApp
               </button>
               
@@ -7476,7 +7476,7 @@ const OrderTracking = ({ slug }: { slug: string }) => {
               <button
                 onClick={handleConfirmPayment}
                 disabled={confirming}
-                className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-4 rounded-xl font-black uppercase tracking-wider disabled:opacity-50 transition-colors"
+                className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3.5 sm:py-4 px-4 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wider disabled:opacity-50 transition-colors"
               >
                 {confirming ? 'Confirmando...' : 'Já paguei!'}
               </button>
@@ -7486,30 +7486,30 @@ const OrderTracking = ({ slug }: { slug: string }) => {
         )}
 
         {/* Order Details */}
-        <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 space-y-4">
+        <div className="bg-zinc-900 rounded-2xl p-5 sm:p-6 border border-zinc-800 space-y-4">
           <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Detalhes do Pedido</h3>
           
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Tipo</span>
-              <span className="font-semibold">
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-500 shrink-0">Tipo</span>
+              <span className="font-semibold text-right">
                 {order.type === 'table' ? 'Mesa' : order.type === 'pickup' ? 'Balcão / Retirada' : 'Delivery'}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Cliente</span>
-              <span>{order.customer_name}</span>
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-500 shrink-0">Cliente</span>
+              <span className="text-right break-words">{order.customer_name}</span>
             </div>
             {order.customer_phone && (
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Telefone</span>
-                <span>{order.customer_phone}</span>
+              <div className="flex justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Telefone</span>
+                <span className="text-right">{order.customer_phone}</span>
               </div>
             )}
             {order.address && (
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Endereço</span>
-                <span className="text-right">{order.address}{order.address_number ? `, ${order.address_number}` : ''}</span>
+              <div className="flex justify-between gap-3">
+                <span className="text-zinc-500 shrink-0">Endereço</span>
+                <span className="text-right break-words">{order.address}{order.address_number ? `, ${order.address_number}` : ''}</span>
               </div>
             )}
             {order.neighborhood_name && (
@@ -7638,18 +7638,18 @@ const CustomerOrders = ({ slug }: { slug: string }) => {
             <span className="font-bold uppercase text-sm">Consultar Pedidos</span>
           </div>
           <p className="text-xs text-zinc-500">Digite seu telefone para ver seus pedidos</p>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="tel"
               value={phone}
               onChange={e => setPhone(e.target.value)}
               placeholder="Seu telefone"
-              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500"
+              className="w-full sm:flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500"
             />
             <button
               type="submit"
               disabled={loading || !phone}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold disabled:opacity-50 transition-colors"
+              className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold disabled:opacity-50 transition-colors shrink-0"
             >
               {loading ? '...' : 'Buscar'}
             </button>
