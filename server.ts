@@ -478,34 +478,61 @@ async function initDatabase() {
         }
       }
 
-      const [countRows] = await connection.execute("SELECT COUNT(*) as count FROM products WHERE establishment_id = ?", [demoId]);
-      const existingCount = Number((countRows as any[])[0]?.count || 0);
+      const [allDemoProducts] = await connection.execute(
+        "SELECT p.id, p.name, p.image_url, p.category_id, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.establishment_id = ? ORDER BY p.id ASC",
+        [demoId]
+      );
+      const demoProductsList = allDemoProducts as any[];
+      const existingCount = demoProductsList.length;
+
+      let updatedDemoImages = 0;
+      let fallbackIdx = 0;
+      const fallbackCycle = ["/assets/demo/x-burger.jpg", "/assets/demo/x-bacon.jpg", "/assets/demo/refrigerante.jpg"];
+
+      for (const p of demoProductsList) {
+        const curImg = String(p.image_url || "").trim();
+        if (curImg.startsWith("/uploads/") || curImg.startsWith("/assets/demo/")) {
+          continue;
+        }
+
+        const pName = String(p.name || "");
+        const cName = String(p.category_name || "");
+        let targetImg = "";
+
+        if (/bacon|smash|duplo|cheddar|tudo|especial|artesanal/i.test(pName)) {
+          targetImg = "/assets/demo/x-bacon.jpg";
+        } else if (/refrigerante|coca|guaran|suco|bebida|lata|agua|água|cerveja/i.test(pName) || /bebid|drink/i.test(cName)) {
+          targetImg = "/assets/demo/refrigerante.jpg";
+        } else if (/burger|burguer|lanche|x-|sandu/i.test(pName) || /hamb|lanche|burger/i.test(cName)) {
+          targetImg = "/assets/demo/x-burger.jpg";
+        } else {
+          targetImg = fallbackCycle[fallbackIdx % fallbackCycle.length];
+          fallbackIdx++;
+        }
+
+        await connection.execute("UPDATE products SET image_url = ? WHERE id = ? AND establishment_id = ?", [targetImg, p.id, demoId]);
+        updatedDemoImages++;
+      }
 
       const demoDefaults: Array<[string, string, number, string, number | null]> = [
         ["X-Burger Clássico", "Pão, carne 150g, queijo e maionese da casa.", 25.90, "/assets/demo/x-burger.jpg", burgersCatId],
         ["X-Bacon Especial", "Pão brioche, blend 180g, cheddar e bacon crocante.", 32.90, "/assets/demo/x-bacon.jpg", burgersCatId],
         ["Refrigerante Lata", "350ml bem gelado.", 7.00, "/assets/demo/refrigerante.jpg", drinksCatId],
       ];
-      for (const [prodName, prodDesc, prodPrice, imgPath, catId] of demoDefaults) {
-        const [prodRows] = await connection.execute(
-          "SELECT id, image_url FROM products WHERE establishment_id = ? AND name = ?",
-          [demoId, prodName]
-        );
-        if ((prodRows as any[]).length > 0) {
-          for (const p of prodRows as any[]) {
-            const curImg = String(p.image_url || "").trim();
-            if (!curImg || (!curImg.startsWith("/uploads/") && !curImg.startsWith("/assets/demo/"))) {
-              await connection.execute("UPDATE products SET image_url = ? WHERE id = ?", [imgPath, p.id]);
-            }
-          }
-        } else if (existingCount <= 2) {
-          await connection.execute(
-            "INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)",
-            [demoId, catId, prodName, prodDesc, prodPrice, imgPath]
+      if (existingCount < 3) {
+        for (const [prodName, prodDesc, prodPrice, imgPath, catId] of demoDefaults) {
+          const alreadyExists = demoProductsList.some(
+            (p) => String(p.name || "").trim().toLowerCase() === prodName.toLowerCase()
           );
+          if (!alreadyExists) {
+            await connection.execute(
+              "INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)",
+              [demoId, catId, prodName, prodDesc, prodPrice, imgPath]
+            );
+          }
         }
       }
-      console.log("✅ Loja demo sincronizada com capa e imagens locais");
+      console.log(`✅ Loja demo sincronizada com capa e imagens locais (${updatedDemoImages} produtos atualizados)`);
     }
   } catch (e) {
     console.log("Erro ao sincronizar loja demo:", e);
