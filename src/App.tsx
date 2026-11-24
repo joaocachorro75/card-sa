@@ -56,6 +56,7 @@ import {
   Users
 } from 'lucide-react';
 import { cn, Product, Category, Neighborhood, CartItem, Order, OrderStatus, PaymentStatus, CustomerData, DashboardMetrics } from './types';
+import { LandingPage } from './components/LandingPage';
 
 // --- Components ---
 
@@ -501,7 +502,8 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
     address: '',
     address_number: '',
     address_complement: '',
-    address_reference: ''
+    address_reference: '',
+    notes: ''
   });
 
   const apiFetch = (url: string, options: any = {}) => {
@@ -644,7 +646,8 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
           type: 'table',
           items_text: items_text,
           customer_name: `Mesa ${tableNumber}`,
-          customer_phone: null
+          customer_phone: null,
+          notes: checkoutData.notes?.trim() || null
         })
       });
       
@@ -668,6 +671,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
       
       // Clear cart and redirect
       setCart([]);
+      setCheckoutData(prev => ({ ...prev, notes: '' }));
       navigate(`/e/${slug}/pedido/${order.id}`);
     } catch (error) {
       console.error('Erro ao criar pedido:', error);
@@ -1059,6 +1063,21 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
         )}
       </div>
 
+      <footer className={cn(
+        "max-w-5xl mx-auto px-4 pt-6 pb-28 text-center text-xs",
+        isDarkTheme ? "text-zinc-500" : "text-zinc-400"
+      )}>
+        <span>Desenvolvido por </span>
+        <a
+          href="https://to-ligado.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-semibold text-orange-500 hover:underline"
+        >
+          To-Ligado.com
+        </a>
+      </footer>
+
       <FloatingCart 
         count={cart.reduce((a, b) => a + b.quantity, 0)} 
         total={total}
@@ -1420,6 +1439,25 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                       </div>
                     </div>
                   )}
+                  {tableNumber && (
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest opacity-50 mb-1.5">
+                        Observações para a cozinha (opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={checkoutData.notes}
+                        onChange={(e) => setCheckoutData(prev => ({ ...prev, notes: e.target.value }))}
+                        placeholder="Ex: sem cebola, ponto da carne..."
+                        className={cn(
+                          "w-full border p-3 rounded-xl text-xs outline-none focus:ring-2 focus:ring-orange-500",
+                          settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand'
+                            ? "bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+                            : "bg-white border-zinc-200 text-zinc-900 placeholder:text-zinc-400"
+                        )}
+                      />
+                    </div>
+                  )}
                   <div className="space-y-2 pt-2">
                     <div className="flex justify-between text-sm font-bold opacity-60">
                       <span>Subtotal</span>
@@ -1519,6 +1557,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                         delivery_fee: deliveryFee,
                         payment_method: paymentMethod,
                         items_text: items_text,
+                        notes: checkoutData.notes?.trim() || null,
                         type: orderMode === 'pickup' ? 'pickup' : 'delivery'
                       })
                     });
@@ -1530,6 +1569,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                     }
                     
                     setCart([]);
+                    setCheckoutData(prev => ({ ...prev, notes: '' }));
                     setIsCheckoutModalOpen(false);
                     navigate(`/e/${slug}/pedido/${order.id}`);
                   } catch (error) {
@@ -1784,13 +1824,40 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                     </div>
                   </div>
 
+                  {/* Observações */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-widest opacity-60 mb-2">
+                      Observações do Pedido (opcional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={checkoutData.notes}
+                      onChange={e => setCheckoutData({ ...checkoutData, notes: e.target.value })}
+                      placeholder="Ex: tirar cebola, molho à parte, troco para R$ 100..."
+                      className={cn(
+                        "w-full border p-3.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-500 resize-none",
+                        settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand'
+                          ? "bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+                          : "bg-zinc-50 border-zinc-200 text-zinc-900 placeholder:text-zinc-400"
+                      )}
+                    />
+                  </div>
+
                   {/* Resumo do Pedido */}
-                  <div className="space-y-3 p-4 rounded-2xl bg-zinc-800/50 border border-zinc-700">
-                    <h3 className="font-bold text-zinc-400 uppercase text-xs tracking-widest">Resumo do Pedido</h3>
-                    <div className="text-xs text-zinc-400 whitespace-pre-wrap">
+                  <div className={cn(
+                    "space-y-3 p-4 rounded-2xl border",
+                    settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand'
+                      ? "bg-zinc-800/50 border-zinc-700"
+                      : "bg-zinc-50 border-zinc-200"
+                  )}>
+                    <h3 className="font-bold opacity-60 uppercase text-xs tracking-widest">Resumo do Pedido</h3>
+                    <div className="text-xs opacity-75 whitespace-pre-wrap">
                       {cart.map(item => `${item.quantity}x ${item.name}`).join('\n')}
                     </div>
-                    <div className="space-y-2 pt-3 border-t border-zinc-700">
+                    <div className={cn(
+                      "space-y-2 pt-3 border-t",
+                      settings.catalog_theme === 'dark' || settings.catalog_theme === 'brand' ? "border-zinc-700" : "border-zinc-200"
+                    )}>
                       <div className="flex justify-between text-sm">
                         <span className="text-zinc-500">Subtotal</span>
                         <span>R$ {subtotal.toFixed(2)}</span>
@@ -2275,6 +2342,12 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
   const [bannerUploading, setBannerUploading] = useState(false);
   const [uploadFeedback, setUploadFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [planStatus, setPlanStatus] = useState<any>(null);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshingLive, setRefreshingLive] = useState(false);
+  const [copiedStoreLink, setCopiedStoreLink] = useState(false);
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
 
   const handleLogin = () => {
     setIsLoggedIn(true);
@@ -2303,11 +2376,18 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
     if (!printWindow) return;
 
     const neighborhood = neighborhoods.find(n => n.id === order.neighborhood_id);
+    const esc = (val: unknown) =>
+      String(val ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     
     printWindow.document.write(`
       <html>
         <head>
-          <title>Imprimir Pedido #${order.id}</title>
+          <title>Imprimir Pedido #${esc(order.id)}</title>
           <style>
             body { 
               font-family: 'Courier New', Courier, monospace; 
@@ -2330,24 +2410,25 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
         </head>
         <body>
           <div class="header">
-            <h2>${settings.store_name || 'MaisQueCardapio'}</h2>
-            <p>Pedido #${order.id}</p>
-            <p>${new Date(order.created_at).toLocaleString()}</p>
+            <h2>${esc(settings.store_name || 'MaisQueCardapio')}</h2>
+            <p>Pedido #${esc(order.id)}</p>
+            <p>${esc(new Date(order.created_at).toLocaleString('pt-BR'))}</p>
           </div>
           <div class="details">
-            <p><strong>Cliente:</strong> ${order.customer_name || 'N/A'}</p>
+            <p><strong>Cliente:</strong> ${esc(order.customer_name || 'N/A')}</p>
             <p><strong>Tipo:</strong> ${order.type === 'table' ? 'Mesa' : order.type === 'pickup' ? 'Balcão / Retirada' : 'Delivery'}</p>
-            ${order.address ? `<p><strong>Endereço:</strong> ${order.address}</p>` : ''}
-            ${neighborhood ? `<p><strong>Bairro:</strong> ${neighborhood.name}</p>` : ''}
+            ${order.address ? `<p><strong>Endereço:</strong> ${esc(order.address)}</p>` : ''}
+            ${neighborhood ? `<p><strong>Bairro:</strong> ${esc(neighborhood.name)}</p>` : ''}
           </div>
           <div class="items">
-            ${order.items_text ? order.items_text.split('\n').map((line: string) => `<div class="item"><span>${line}</span></div>`).join('') : ''}
+            ${order.items_text ? String(order.items_text).split('\n').map((line: string) => `<div class="item"><span>${esc(line)}</span></div>`).join('') : ''}
+            ${order.notes ? `<p style="margin-top:8px;padding-top:6px;border-top:1px dotted #999;"><strong>OBS:</strong> ${esc(order.notes)}</p>` : ''}
           </div>
           <div class="total">
             <span>TOTAL:</span>
             <span>R$ ${(parseFloat(order.total) || 0).toFixed(2)}</span>
           </div>
-          <p><strong>Pagamento:</strong> ${order.payment_method.toUpperCase()}</p>
+          <p><strong>Pagamento:</strong> ${esc(String(order.payment_method || '').toUpperCase())}</p>
           <div class="footer">
             <p>Obrigado pela preferência!</p>
           </div>
@@ -2463,6 +2544,33 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
     }
   };
 
+  const refreshLiveOperations = async () => {
+    setRefreshingLive(true);
+    try {
+      const [ordersRes, commandsRes, metricsRes] = await Promise.all([
+        apiFetch('/orders'),
+        apiFetch('/commands'),
+        apiFetch('/dashboard/metrics')
+      ]);
+      if (ordersRes.ok) {
+        const data = await ordersRes.json();
+        if (Array.isArray(data)) setOrders(data);
+      }
+      if (commandsRes.ok) {
+        const data = await commandsRes.json();
+        if (Array.isArray(data)) setCommands(data);
+      }
+      if (metricsRes.ok) {
+        const data = await metricsRes.json();
+        setMetrics(data);
+      }
+    } catch {
+      // ignore transient polling error
+    } finally {
+      setRefreshingLive(false);
+    }
+  };
+
   useEffect(() => {
     if (isLoggedIn) {
       apiFetch('/products').then(res => res.json()).then(setProducts);
@@ -2472,6 +2580,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
       apiFetch('/commands').then(res => res.json()).then(setCommands);
       apiFetch('/reservations').then(res => res.json()).then(setReservations);
       apiFetch('/orders').then(res => res.json()).then(setOrders);
+      apiFetch('/dashboard/metrics').then(res => res.ok ? res.json() : null).then(setMetrics).catch(() => {});
       apiFetch('/customers').then(res => res.ok ? res.json() : []).then(data => setCustomers(Array.isArray(data) ? data : [])).catch(() => {});
       apiFetch('/settings').then(res => res.json()).then((s) => {
         setSettings(s);
@@ -2482,6 +2591,14 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
       fetchEvolutionStatus();
     }
   }, [isLoggedIn, slug]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !autoRefresh) return;
+    const interval = setInterval(() => {
+      refreshLiveOperations();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, autoRefresh, slug]);
 
   useEffect(() => {
     if (!isLoggedIn || !evoQr || evolutionStatus?.connected) return;
@@ -2724,21 +2841,151 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-8 sm:mb-12">
-          {[
-            { icon: Smartphone, label: "Produtos Ativos", value: products.filter(p => p.is_available).length, color: "blue" },
-            { icon: LayoutDashboard, label: "Categorias", value: categories.length, color: "orange" },
-            { icon: QrCode, label: hasTablesAndPrint ? "Mesas Ativas" : "Mesas QR & Cupom", value: hasTablesAndPrint ? tables.length : "Premium", color: "emerald" }
-          ].map((stat, i) => (
-            <div key={i} className="bg-brand-surface p-5 sm:p-8 rounded-3xl border border-zinc-800 shadow-sm group hover:border-brand-accent/30 transition-all">
-              <div className={`bg-brand-accent/10 text-brand-accent p-3 sm:p-4 rounded-2xl w-fit mb-4 sm:mb-6 group-hover:scale-110 transition-transform`}>
-                <stat.icon className="w-6 h-6 sm:w-7 sm:h-7" />
-              </div>
-              <h3 className="text-zinc-500 text-xs font-black uppercase tracking-widest mb-1">{stat.label}</h3>
-              <p className="text-3xl sm:text-4xl font-black text-white">{stat.value}</p>
-            </div>
-          ))}
+        {/* Barra Rápida de Link do Cardápio & Sincronização ao Vivo */}
+        <div className="mb-6 rounded-2xl border border-zinc-800 bg-brand-surface px-4 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+            <span className="text-xs font-semibold text-zinc-400">Link do cardápio:</span>
+            <span className="font-mono text-xs sm:text-sm text-brand-accent truncate max-w-full">
+              {typeof window !== 'undefined' ? `${window.location.origin}/e/${slug}` : `/e/${slug}`}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const url = typeof window !== 'undefined' ? `${window.location.origin}/e/${slug}` : `/e/${slug}`;
+                navigator.clipboard?.writeText(url);
+                setCopiedStoreLink(true);
+                setTimeout(() => setCopiedStoreLink(false), 2200);
+              }}
+              className="px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              {copiedStoreLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
+              {copiedStoreLink ? 'Link Copiado!' : 'Copiar Link'}
+            </button>
+            <Link
+              to={`/e/${slug}`}
+              className="px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-brand-accent" />
+              Abrir Cardápio
+            </Link>
+            <button
+              type="button"
+              onClick={() => setAutoRefresh(prev => !prev)}
+              className={cn(
+                "px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer",
+                autoRefresh
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-400"
+              )}
+              title="Atualiza pedidos, comandas e faturamento automaticamente a cada 15 segundos"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              {autoRefresh ? 'Ao vivo (15s)' : 'Auto pausado'}
+            </button>
+            <button
+              type="button"
+              onClick={refreshLiveOperations}
+              disabled={refreshingLive}
+              className="px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs font-semibold text-zinc-200 flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", refreshingLive && "animate-spin")} />
+              Atualizar
+            </button>
+          </div>
         </div>
+
+        {/* Alerta imediato quando alguma mesa solicitou a conta */}
+        {commands.some(c => c.bill_requested_at) && (
+          <div className="mb-6 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 text-amber-300 text-sm font-semibold">
+              <Bell className="w-4 h-4 shrink-0" />
+              <span>
+                {commands.filter(c => c.bill_requested_at).length === 1
+                  ? 'Uma mesa acabou de pedir a conta!'
+                  : `${commands.filter(c => c.bill_requested_at).length} mesas pediram a conta!`}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('commands')}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              Ver Comandas Abertas
+            </button>
+          </div>
+        )}
+
+        {/* KPIs Financeiros e Operacionais ao Vivo */}
+        {(() => {
+          const activeQueueCount = orders.filter(o =>
+            !['completed', 'entregue', 'cancelled', 'cancelado'].includes(String(o.status || ''))
+          ).length;
+          const todayTotalVal = metrics?.todayTotal ?? 0;
+          const todayOrdersVal = metrics?.todayOrders ?? 0;
+          const monthTotalVal = metrics?.monthTotal ?? 0;
+          const monthOrdersVal = metrics?.monthOrders ?? 0;
+          const avgTicketVal = metrics?.avgTicket ?? 0;
+          const fmtMoney = (v: number) =>
+            v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 sm:mb-10">
+              <div className="bg-brand-surface p-5 sm:p-6 rounded-2xl border border-zinc-800">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <span className="text-zinc-400 text-xs font-semibold">Vendas Hoje</span>
+                  <DollarSign className="w-4 h-4 text-emerald-400" />
+                </div>
+                <p className="text-2xl sm:text-3xl font-extrabold text-white tabular-nums">
+                  R$ {fmtMoney(todayTotalVal)}
+                </p>
+                <p className="text-xs text-zinc-400 mt-1 tabular-nums">
+                  {todayOrdersVal} {todayOrdersVal === 1 ? 'pedido hoje' : 'pedidos hoje'}
+                </p>
+              </div>
+
+              <div className="bg-brand-surface p-5 sm:p-6 rounded-2xl border border-zinc-800">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <span className="text-zinc-400 text-xs font-semibold">Faturamento do Mês</span>
+                  <TrendingUp className="w-4 h-4 text-brand-accent" />
+                </div>
+                <p className="text-2xl sm:text-3xl font-extrabold text-white tabular-nums">
+                  R$ {fmtMoney(monthTotalVal)}
+                </p>
+                <p className="text-xs text-zinc-400 mt-1 tabular-nums">
+                  {monthOrdersVal} {monthOrdersVal === 1 ? 'pedido no mês' : 'pedidos no mês'}
+                </p>
+              </div>
+
+              <div className="bg-brand-surface p-5 sm:p-6 rounded-2xl border border-zinc-800">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <span className="text-zinc-400 text-xs font-semibold">Ticket Médio (Pagos)</span>
+                  <CreditCard className="w-4 h-4 text-purple-400" />
+                </div>
+                <p className="text-2xl sm:text-3xl font-extrabold text-white tabular-nums">
+                  R$ {fmtMoney(avgTicketVal)}
+                </p>
+                <p className="text-xs text-zinc-400 mt-1 tabular-nums">
+                  {customers.length} {customers.length === 1 ? 'cliente na base' : 'clientes na base'}
+                </p>
+              </div>
+
+              <div className="bg-brand-surface p-5 sm:p-6 rounded-2xl border border-zinc-800">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <span className="text-zinc-400 text-xs font-semibold">Operação Agora</span>
+                  <ShoppingCart className="w-4 h-4 text-orange-400" />
+                </div>
+                <p className="text-2xl sm:text-3xl font-extrabold text-white tabular-nums">
+                  {activeQueueCount} na fila
+                </p>
+                <p className="text-xs text-zinc-400 mt-1 tabular-nums">
+                  {products.filter(p => p.is_available).length} produtos ativos · {hasTablesAndPrint ? `${commands.length} comandas` : 'Mesas (Premium)'}
+                </p>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="flex gap-1 sm:gap-2 mb-8 border-b border-zinc-800 overflow-x-auto no-scrollbar whitespace-nowrap pb-1">
           {[
@@ -2987,34 +3234,57 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
           </div>
         )}
 
-        {activeTab === 'orders' && (
+        {activeTab === 'orders' && (() => {
+          const normalizeStatus = (s: string) =>
+            s === 'pendente' ? 'pending'
+            : s === 'confirmado' ? 'confirmed'
+            : s === 'em_preparo' ? 'preparing'
+            : s === 'saiu_para_entrega' ? 'delivering'
+            : s === 'entregue' ? 'completed'
+            : s === 'cancelado' ? 'cancelled'
+            : (s || 'pending');
+
+          const getNextStatusAction = (order: any) => {
+            const st = normalizeStatus(order.status);
+            if (st === 'pending' || st === 'aguardando_pagamento') return { next: 'confirmed', label: 'Confirmar' };
+            if (st === 'confirmed') return { next: 'preparing', label: 'Preparar' };
+            if (st === 'preparing') return { next: 'delivering', label: order.type === 'pickup' ? 'Pronto' : 'Enviar' };
+            if (st === 'delivering') return { next: 'completed', label: order.type === 'pickup' ? 'Retirado' : 'Entregue' };
+            return null;
+          };
+
+          const q = orderSearch.trim().toLowerCase();
+          const filteredOrders = orders.filter(o => {
+            if (orderTypeFilter !== 'all' && (o.type || 'delivery') !== orderTypeFilter) return false;
+            const st = normalizeStatus(o.status);
+            if (orderStatusFilter === 'active' && (st === 'completed' || st === 'cancelled')) return false;
+            if (orderStatusFilter === 'completed' && st !== 'completed') return false;
+            if (orderStatusFilter === 'cancelled' && st !== 'cancelled') return false;
+            if (!q) return true;
+            return (
+              String(o.id).includes(q) ||
+              String(o.customer_name || '').toLowerCase().includes(q) ||
+              String(o.customer_phone || '').toLowerCase().includes(q) ||
+              String(o.items_text || '').toLowerCase().includes(q)
+            );
+          });
+
+          const updateOrderStatus = async (orderId: number, newStatus: string) => {
+            await apiFetch(`/orders/${orderId}/status`, {
+              method: 'PUT',
+              body: JSON.stringify({ status: newStatus })
+            });
+            refreshLiveOperations();
+          };
+
+          return (
           <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-            <div className="p-4 sm:p-6 border-b border-zinc-100 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-bold text-zinc-900">Histórico de Pedidos</h2>
-                <p className="text-zinc-500 text-sm">Acompanhe entregas, mesas e pedidos de balcão</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                {[
-                  { id: 'all', label: 'Todos' },
-                  { id: 'pickup', label: 'Balcão' },
-                  ...(hasTablesAndPrint ? [{ id: 'table', label: 'Mesa' }] : []),
-                  { id: 'delivery', label: 'Delivery' }
-                ].map(f => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setOrderTypeFilter(f.id as any)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer",
-                      orderTypeFilter === f.id
-                        ? "bg-zinc-900 text-white"
-                        : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
-                    )}
-                  >
-                    {f.label}
-                  </button>
-                ))}
+            <div className="p-4 sm:p-6 border-b border-zinc-100 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-zinc-900">Fila & Histórico de Pedidos</h2>
+                  <p className="text-zinc-500 text-sm">Avance status com 1 clique, imprima cupons ou chame o cliente no WhatsApp</p>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -3025,45 +3295,109 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                     setCounterItems({});
                     setIsCounterOrderModalOpen(true);
                   }}
-                  className="w-full sm:w-auto justify-center bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ml-0 sm:ml-1"
+                  className="w-full sm:w-auto justify-center bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Plus className="w-4 h-4 shrink-0" />
                   {hasTablesAndPrint ? 'Novo Pedido Balcão / Mesa' : 'Novo Pedido Balcão'}
                 </button>
               </div>
+
+              <div className="flex flex-col lg:flex-row gap-3 lg:items-center justify-between">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={orderSearch}
+                    onChange={e => setOrderSearch(e.target.value)}
+                    placeholder="Buscar por #pedido, cliente, WhatsApp ou item..."
+                    className="w-full bg-zinc-50 text-zinc-900 placeholder:text-zinc-400 border border-zinc-200 pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { id: 'all', label: 'Todos' },
+                    { id: 'pickup', label: 'Balcão' },
+                    ...(hasTablesAndPrint ? [{ id: 'table', label: 'Mesa' }] : []),
+                    { id: 'delivery', label: 'Delivery' }
+                  ].map(f => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setOrderTypeFilter(f.id as any)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer",
+                        orderTypeFilter === f.id
+                          ? "bg-zinc-900 text-white"
+                          : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                  <span className="hidden sm:inline text-zinc-300 px-1">|</span>
+                  {[
+                    { id: 'all', label: 'Qualquer status' },
+                    { id: 'active', label: 'Em andamento' },
+                    { id: 'completed', label: 'Concluídos' },
+                    { id: 'cancelled', label: 'Cancelados' }
+                  ].map(sf => (
+                    <button
+                      key={sf.id}
+                      type="button"
+                      onClick={() => setOrderStatusFilter(sf.id as any)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer",
+                        orderStatusFilter === sf.id
+                          ? "bg-orange-500 text-white"
+                          : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                      )}
+                    >
+                      {sf.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            {orders.filter(o => orderTypeFilter === 'all' || (o.type || 'delivery') === orderTypeFilter).length === 0 ? (
+
+            {filteredOrders.length === 0 ? (
               <div className="p-12 text-center">
                 <ShoppingCart className="w-12 h-12 text-zinc-200 mx-auto mb-4" />
-                <p className="text-zinc-400">Nenhum pedido encontrado neste filtro.</p>
+                <p className="text-zinc-500 font-medium">Nenhum pedido encontrado neste filtro.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-zinc-50 text-zinc-500 text-xs uppercase tracking-wider">
                     <tr>
-                      <th className="px-6 py-4 font-semibold">Pedido / Cliente</th>
-                      <th className="px-6 py-4 font-semibold">Tipo</th>
-                      <th className="px-6 py-4 font-semibold">Pagamento</th>
-                      <th className="px-6 py-4 font-semibold">Total</th>
-                      <th className="px-6 py-4 font-semibold">Status & Ações</th>
+                      <th className="px-5 py-4 font-semibold">Pedido / Cliente</th>
+                      <th className="px-4 py-4 font-semibold">Tipo</th>
+                      <th className="px-4 py-4 font-semibold">Pagamento</th>
+                      <th className="px-4 py-4 font-semibold">Total</th>
+                      <th className="px-5 py-4 font-semibold">Status & Ações Rápidas</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
-                    {orders
-                      .filter(o => orderTypeFilter === 'all' || (o.type || 'delivery') === orderTypeFilter)
-                      .map(order => (
+                    {filteredOrders.map(order => {
+                      const nextStep = getNextStatusAction(order);
+                      const phoneDigits = String(order.customer_phone || '').replace(/\D/g, '');
+                      const waNumber = phoneDigits.startsWith('55') ? phoneDigits : (phoneDigits.length >= 10 ? `55${phoneDigits}` : '');
+                      return (
                       <tr key={order.id} className="hover:bg-zinc-50 transition-colors">
-                        <td className="px-6 py-4 text-sm text-zinc-600">
-                          <div className="font-bold text-zinc-900">#{order.id} · {order.customer_name || 'Cliente'}</div>
-                          <div className="text-xs text-zinc-400">{new Date(order.created_at).toLocaleString('pt-BR')}</div>
+                        <td className="px-5 py-4 text-sm text-zinc-600">
+                          <div className="font-bold text-zinc-900 tabular-nums">#{order.id} · {order.customer_name || 'Cliente'}</div>
+                          <div className="text-xs text-zinc-400 tabular-nums">{new Date(order.created_at).toLocaleString('pt-BR')}</div>
                           {order.items_text && (
                             <div className="text-xs text-zinc-500 mt-1 line-clamp-2 max-w-xs">{order.items_text}</div>
                           )}
+                          {order.notes && (
+                            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-1.5 max-w-xs">
+                              <strong>Obs:</strong> {order.notes}
+                            </div>
+                          )}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
                           <span className={cn(
-                            "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase",
+                            "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase whitespace-nowrap",
                             order.type === 'table'
                               ? "bg-blue-100 text-blue-700"
                               : order.type === 'pickup'
@@ -3073,7 +3407,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                             {order.type === 'table' ? 'Mesa' : order.type === 'pickup' ? 'Balcão' : 'Delivery'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm">
+                        <td className="px-4 py-4 text-sm">
                           <div className="flex flex-col gap-1 items-start">
                             <span className={cn(
                               "px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase",
@@ -3101,7 +3435,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                                     method: 'PUT',
                                     body: JSON.stringify({ notes: 'Confirmado manualmente no painel' })
                                   });
-                                  apiFetch('/orders').then(res => res.json()).then(setOrders);
+                                  refreshLiveOperations();
                                 }}
                                 className="text-[10px] font-bold text-emerald-700 hover:underline cursor-pointer"
                               >
@@ -3110,21 +3444,24 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                             )}
                           </div>
                         </td>
-                        <td className="px-6 py-4 font-bold text-zinc-900">
+                        <td className="px-4 py-4 font-bold text-zinc-900 tabular-nums whitespace-nowrap">
                           R$ {(parseFloat(order.total) || 0).toFixed(2)}
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
+                        <td className="px-5 py-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {nextStep && (
+                              <button
+                                type="button"
+                                onClick={() => updateOrderStatus(order.id, nextStep.next)}
+                                className="px-2.5 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-colors cursor-pointer whitespace-nowrap"
+                                title={`Avançar para ${nextStep.label}`}
+                              >
+                                {nextStep.label}
+                              </button>
+                            )}
                             <select
-                              value={order.status === 'pendente' ? 'pending' : order.status === 'confirmado' ? 'confirmed' : (order.status || 'pending')}
-                              onChange={async (e) => {
-                                const newStatus = e.target.value;
-                                await apiFetch(`/orders/${order.id}/status`, {
-                                  method: 'PUT',
-                                  body: JSON.stringify({ status: newStatus })
-                                });
-                                apiFetch('/orders').then(res => res.json()).then(setOrders);
-                              }}
+                              value={normalizeStatus(order.status)}
+                              onChange={(e) => updateOrderStatus(order.id, e.target.value)}
                               className="bg-zinc-100 text-zinc-900 border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-orange-500"
                             >
                               <option value="pending">Pendente</option>
@@ -3134,10 +3471,21 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                               <option value="completed">{order.type === 'pickup' ? 'Retirado' : 'Entregue'}</option>
                               <option value="cancelled">Cancelado</option>
                             </select>
+                            {waNumber && (
+                              <a
+                                href={`https://wa.me/${waNumber}?text=${encodeURIComponent(`Olá ${order.customer_name || ''}! Sobre o seu pedido #${order.id}: `)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                title="Falar com o cliente no WhatsApp"
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                              </a>
+                            )}
                             {hasTablesAndPrint ? (
-                              <button 
+                              <button
                                 onClick={() => printOrder(order)}
-                                className="p-2 text-zinc-400 hover:text-zinc-900 transition-colors"
+                                className="p-2 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer"
                                 title="Imprimir Cupom"
                               >
                                 <Printer className="w-4 h-4" />
@@ -3146,7 +3494,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                               <button
                                 type="button"
                                 onClick={() => setActiveTab('subscription')}
-                                className="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold flex items-center gap-1 hover:bg-amber-100 transition-colors"
+                                className="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold flex items-center gap-1 hover:bg-amber-100 transition-colors cursor-pointer"
                                 title="Impressão de cupom exclusiva do Plano Premium"
                               >
                                 <Lock className="w-3 h-3" /> Cupom
@@ -3155,13 +3503,15 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {activeTab === 'customers' && (() => {
           const query = customerSearch.trim().toLowerCase();
@@ -4894,1313 +5244,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
 
 // --- SaaS Components ---
 
-interface PublicPlan {
-  id: number;
-  name: string;
-  price: number;
-  max_products: number;
-  enable_reservations: number;
-  enable_automation: number;
-  enable_tables?: number;
-}
-
-const DEFAULT_PUBLIC_PLANS: PublicPlan[] = [
-  { id: 1, name: 'Gratuito', price: 0, max_products: 10, enable_reservations: 0, enable_automation: 1, enable_tables: 0 },
-  { id: 2, name: 'Premium', price: 49.9, max_products: 100, enable_reservations: 1, enable_automation: 1, enable_tables: 1 }
-];
-
-const formatBRL = (value: number) =>
-  value.toLocaleString('pt-BR', { minimumFractionDigits: value % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
-
-const toSlug = (text: string) =>
-  text
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-const LandingPage = () => {
-  const [formData, setFormData] = useState({ name: '', slug: '', owner_whatsapp: '', password: '' });
-  const [slugTouched, setSlugTouched] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<'free' | 'premium'>('free');
-  const [plans, setPlans] = useState<PublicPlan[]>(DEFAULT_PUBLIC_PLANS);
-  const [loginData, setLoginData] = useState({ slug: '', password: '' });
-  const [loading, setLoading] = useState(false);
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [registerError, setRegisterError] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [copiedCreds, setCopiedCreds] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [registrationSuccess, setRegistrationSuccess] = useState<{ slug: string; whatsapp: string; password: string; plan: 'free' | 'premium' } | null>(null);
-  const [previewOrderMode, setPreviewOrderMode] = useState<'delivery' | 'pickup'>('delivery');
-  const [previewPayment, setPreviewPayment] = useState<'pix' | 'infinitepay'>('infinitepay');
-  const [previewAdminTab, setPreviewAdminTab] = useState<'orders' | 'commands'>('orders');
-  const storeNameInputRef = React.useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    window
-      .fetch('/api/public/plans')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setPlans(data);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const freePlan = plans.find((p) => p.id === 1 || p.price === 0) || DEFAULT_PUBLIC_PLANS[0];
-  const premiumPlan = plans.find((p) => p.id === 2 || p.price > 0) || DEFAULT_PUBLIC_PLANS[1];
-
-  const handleSelectPlan = (plan: 'free' | 'premium') => {
-    setSelectedPlan(plan);
-    setRegisterError('');
-    const registerEl = document.getElementById('register');
-    if (registerEl) {
-      registerEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-    setTimeout(() => {
-      storeNameInputRef.current?.focus();
-    }, 350);
-  };
-
-  const handleNameChange = (value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      name: value,
-      slug: slugTouched ? prev.slug : toSlug(value)
-    }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setRegisterError('');
-
-    const cleanSlug = toSlug(formData.slug);
-    const cleanPhone = formData.owner_whatsapp.replace(/\D/g, '');
-    if (cleanSlug.length < 2) {
-      setRegisterError('Informe uma URL personalizada com pelo menos 2 caracteres.');
-      return;
-    }
-    if (cleanPhone.length < 10) {
-      setRegisterError('Informe um WhatsApp válido com DDD (ex: 11999999999).');
-      return;
-    }
-    if (formData.password.length < 4) {
-      setRegisterError('A senha precisa ter pelo menos 4 caracteres.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await window.fetch('/api/public/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, slug: cleanSlug, owner_whatsapp: cleanPhone })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        localStorage.setItem(`admin_auth_${data.slug}`, 'true');
-        setRegistrationSuccess({
-          slug: data.slug,
-          whatsapp: data.whatsapp || cleanPhone,
-          password: formData.password,
-          plan: selectedPlan
-        });
-      } else {
-        setRegisterError(data.error || 'Não foi possível concluir o cadastro.');
-      }
-    } catch {
-      setRegisterError('Erro de conexão ao registrar. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
-    setLoginLoading(true);
-    try {
-      const res = await window.fetch('/api/public/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ whatsapp: loginData.slug, password: loginData.password })
-      });
-      const data = await res.json();
-      if (res.ok && data.slug) {
-        window.location.href = `/e/${data.slug}/admin`;
-      } else {
-        setLoginError(data.error || 'WhatsApp ou senha inválidos.');
-      }
-    } catch {
-      setLoginError('Erro ao conectar ao servidor.');
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const capabilities = [
-    {
-      num: '01',
-      title: 'Pedidos Online & Delivery por Bairro',
-      planScope: 'Gratuito e Premium',
-      span: 'md:col-span-7',
-      desc: 'Link próprio /e/sua-loja com carrinho, endereço completo, cálculo automático da taxa de entrega por bairro e acompanhamento do pedido em tempo real sem comissão por venda.'
-    },
-    {
-      num: '02',
-      title: 'Retirada no Balcão, PIX & InfinitePay',
-      planScope: 'Gratuito e Premium',
-      span: 'md:col-span-5',
-      desc: 'O cliente escolhe Delivery ou Retirada no Balcão e paga direto na sua conta via PIX da loja, na entrega/balcão ou por checkout InfinitePay com confirmação automática.'
-    },
-    {
-      num: '03',
-      title: 'WhatsApp Automático via QR Code',
-      planScope: 'Gratuito e Premium',
-      span: 'md:col-span-5',
-      desc: 'Disponível em todos os planos: conecte o WhatsApp da loja escaneando o QR Code (Evolution API) e dispare notificações automáticas de pedido, entrega e pagamento.'
-    },
-    {
-      num: '04',
-      title: 'Identidade da Loja & Cardápio Visual',
-      planScope: 'Gratuito e Premium',
-      span: 'md:col-span-7',
-      desc: 'Personalize seu catálogo com logomarca, upload de capa, escolha de tema (Claro, Escuro ou Marca), fontes, categorias e controle imediato de loja aberta ou fechada.'
-    },
-    {
-      num: '05',
-      title: 'Pedidos na Mesa (QR Code), Comandas & Cupom',
-      planScope: 'Exclusivo Premium',
-      span: 'md:col-span-6',
-      desc: 'Atenda o salão completo: gere QR Codes por mesa (/?mesa=1), gerencie comandas abertas no painel, lance pedidos presenciais e imprima cupons de preparo.'
-    },
-    {
-      num: '06',
-      title: 'Reservas Online de Mesas',
-      planScope: 'Exclusivo Premium',
-      span: 'md:col-span-6',
-      desc: 'Disponibilize agendamento de mesas com data, horário e quantidade de pessoas, gerenciando confirmações diretamente na aba de Reservas.'
-    }
-  ];
-
-  const comparisonRows = [
-    {
-      feature: 'Limite de produtos cadastrados',
-      free: `Até ${freePlan.max_products} produtos`,
-      premium: `Até ${premiumPlan.max_products} produtos`
-    },
-    {
-      feature: 'Pedidos online com Delivery e taxa por bairro',
-      free: true,
-      premium: true
-    },
-    {
-      feature: 'Retirada no Balcão e rastreio do pedido pelo cliente',
-      free: true,
-      premium: true
-    },
-    {
-      feature: 'Notificações automáticas no WhatsApp (Evolution QR Code)',
-      free: freePlan.enable_automation === 1,
-      premium: premiumPlan.enable_automation === 1
-    },
-    {
-      feature: 'Pagamentos via PIX, Entrega e InfinitePay da loja',
-      free: true,
-      premium: true
-    },
-    {
-      feature: 'Cardápio online (/e/sua-loja) com temas, logo e upload de capa',
-      free: true,
-      premium: true
-    },
-    {
-      feature: 'Pedidos na mesa (QR Code), comandas abertas e impressão de cupom',
-      free: (freePlan.enable_tables ?? 0) === 1,
-      premium: (premiumPlan.enable_tables ?? 1) === 1
-    },
-    {
-      feature: 'Reservas online de mesas e horários',
-      free: false,
-      premium: premiumPlan.enable_reservations === 1
-    }
-  ];
-
-  return (
-    <div className="min-h-screen bg-brand-bg text-white flex flex-col selection:bg-brand-accent selection:text-brand-bg scroll-smooth">
-      {/* Top Bar - 3 Zonas Limpas */}
-      <header className="sticky top-0 z-50 border-b border-zinc-900 bg-brand-bg/90 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 h-16 sm:h-20 flex items-center justify-between gap-2 sm:gap-8">
-          <a href="#" className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-            <div className="bg-brand-accent p-1.5 sm:p-2 rounded-xl shrink-0">
-              <ChefHat className="text-brand-bg w-4 h-4 sm:w-5 sm:h-5" />
-            </div>
-            <span className="font-display font-bold text-base sm:text-xl tracking-tight text-white truncate">
-              MaisQueCardapio
-            </span>
-          </a>
-
-          <nav className="hidden md:flex items-center gap-8">
-            <a href="#recursos" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors whitespace-nowrap shrink-0">
-              Recursos
-            </a>
-            <a href="#como-funciona" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors whitespace-nowrap shrink-0">
-              Como Funciona
-            </a>
-            <a href="#planos" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors whitespace-nowrap shrink-0">
-              Planos
-            </a>
-            <Link to="/e/demo" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors whitespace-nowrap shrink-0">
-              Ver Demo
-            </Link>
-          </nav>
-
-          <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setLoginError('');
-                setIsLoginModalOpen(true);
-              }}
-              className="text-xs sm:text-sm font-semibold text-zinc-300 hover:text-white px-2.5 sm:px-3 py-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Entrar
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectPlan('free')}
-              className="bg-brand-accent text-brand-bg px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold hover:bg-brand-accent-hover transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Criar Cardápio
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="flex-1">
-        {/* Hero Section */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-16 lg:pt-20 lg:pb-24">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
-            <div className="lg:col-span-6 space-y-6 sm:space-y-7">
-              <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand-accent">
-                Pedidos Online · Delivery por Bairro · WhatsApp Automático · Salão Premium
-              </p>
-
-              <h1 className="font-display font-bold text-white tracking-tight leading-[1.08] text-[clamp(2rem,4.4vw,3.85rem)]">
-                Pedidos online com delivery por bairro, sem comissão por venda.
-              </h1>
-
-              <p className="text-base sm:text-lg text-zinc-400 leading-relaxed max-w-xl">
-                Receba pedidos de delivery com taxa automática por bairro, retirada no balcão, pagamento direto via PIX ou InfinitePay e notificações automáticas no WhatsApp em qualquer plano — e escale no Premium com QR Code nas mesas, comandas abertas, impressão de cupom e reservas.
-              </p>
-
-              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4 pt-1">
-                <button
-                  type="button"
-                  onClick={() => handleSelectPlan('free')}
-                  className="w-full sm:w-auto justify-center bg-brand-accent text-brand-bg px-5 sm:px-7 py-3.5 sm:py-4 rounded-xl font-bold text-sm sm:text-base hover:bg-brand-accent-hover transition-colors inline-flex items-center gap-2 cursor-pointer"
-                >
-                  <span>Começar no Plano Gratuito</span>
-                  <ChevronRight className="w-4 h-4 shrink-0" />
-                </button>
-                <Link
-                  to="/e/demo"
-                  className="w-full sm:w-auto justify-center border border-zinc-800 bg-zinc-950 text-white px-5 sm:px-7 py-3.5 sm:py-4 rounded-xl font-semibold text-sm sm:text-base hover:border-zinc-700 hover:bg-zinc-900 transition-colors inline-flex items-center gap-2"
-                >
-                  <Eye className="w-4 h-4 text-brand-accent shrink-0" />
-                  <span>Explorar Loja Demo</span>
-                </Link>
-              </div>
-
-              <p className="text-xs sm:text-sm text-zinc-500 pt-2">
-                Plano Gratuito sem prazo de expiração · Ativação instantânea em /e/sua-loja · Sem cartão para começar
-              </p>
-            </div>
-
-            <div className="lg:col-span-6">
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 overflow-hidden shadow-2xl">
-                {/* Real Storefront Preview Header */}
-                <div className="px-4 py-2.5 border-b border-zinc-800 bg-zinc-900/90 flex items-center justify-between gap-3">
-                  <span className="text-xs font-mono text-zinc-400 truncate">
-                    maisquecardapio.com.br<span className="text-white font-semibold">/e/demo</span>
-                  </span>
-                  <Link
-                    to="/e/demo"
-                    className="text-xs font-semibold text-brand-accent hover:underline whitespace-nowrap shrink-0 inline-flex items-center gap-1"
-                  >
-                    Abrir loja real
-                    <ExternalLink className="w-3 h-3" />
-                  </Link>
-                </div>
-
-                {/* Live Portuguese Storefront + Checkout Showcase */}
-                <div className="bg-zinc-100 text-zinc-900 p-3.5 sm:p-4 grid grid-cols-1 sm:grid-cols-12 gap-3.5">
-                  {/* Left: Real Light-Theme Storefront */}
-                  <div className="sm:col-span-7 bg-white rounded-xl border border-zinc-200/90 overflow-hidden shadow-sm flex flex-col">
-                    <div className="px-3 py-2 border-b border-zinc-200 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="bg-orange-500 p-1.5 rounded-lg shrink-0">
-                          <ChefHat className="w-3.5 h-3.5 text-white" />
-                        </div>
-                        <span className="text-xs font-extrabold text-zinc-900 truncate">MaisQueCardapio Demo</span>
-                      </div>
-                      <span className="text-[10px] font-semibold text-zinc-600 bg-zinc-100 px-2 py-0.5 rounded-md whitespace-nowrap">
-                        Entrar
-                      </span>
-                    </div>
-
-                    <div className="p-2.5 space-y-2.5 flex-1">
-                      <div className="relative h-20 rounded-lg overflow-hidden">
-                        <img
-                          src="/assets/demo/banner-demo.jpg"
-                          alt="Capa da loja demo"
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-                        <div className="absolute bottom-1.5 left-2.5 right-2.5">
-                          <p className="text-[10px] text-white/85 font-medium">Cardápio Digital · Delivery e Balcão</p>
-                          <p className="text-xs font-bold text-white leading-tight">Aberto agora · 30–45 min</p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="rounded-lg border border-zinc-200 p-2 flex items-center justify-between gap-2.5 bg-white">
-                          <div className="min-w-0">
-                            <p className="text-[10px] text-zinc-500 font-medium">Hambúrgueres</p>
-                            <p className="text-xs font-bold text-zinc-900 truncate">X-Burger Clássico</p>
-                            <p className="text-xs font-extrabold text-orange-600 tabular-nums mt-0.5">R$ 25,90</p>
-                          </div>
-                          <img
-                            src="/assets/demo/x-burger.jpg"
-                            alt="X-Burger Clássico"
-                            referrerPolicy="no-referrer"
-                            className="w-12 h-11 rounded-lg object-cover shrink-0"
-                          />
-                        </div>
-
-                        <div className="rounded-lg border border-zinc-200 p-2 flex items-center justify-between gap-2.5 bg-white">
-                          <div className="min-w-0">
-                            <p className="text-[10px] text-zinc-500 font-medium">Hambúrgueres</p>
-                            <p className="text-xs font-bold text-zinc-900 truncate">X-Bacon Especial</p>
-                            <p className="text-xs font-extrabold text-orange-600 tabular-nums mt-0.5">R$ 32,90</p>
-                          </div>
-                          <img
-                            src="/assets/demo/x-bacon.jpg"
-                            alt="X-Bacon Especial"
-                            referrerPolicy="no-referrer"
-                            className="w-12 h-11 rounded-lg object-cover shrink-0"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right: Real Delivery Cart & Checkout Preview */}
-                  <div className="sm:col-span-5 bg-white rounded-xl border border-zinc-200/90 p-3 shadow-sm flex flex-col justify-between gap-3">
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
-                        <span className="text-xs font-extrabold text-zinc-900 inline-flex items-center gap-1.5">
-                          <ShoppingCart className="w-3.5 h-3.5 text-orange-500" />
-                          Seu Carrinho
-                        </span>
-                        <span className="text-[11px] font-semibold text-zinc-500 tabular-nums">2 itens</span>
-                      </div>
-
-                      {/* Interactive Mode Toggle matching real cart */}
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setPreviewOrderMode('delivery')}
-                          className={cn(
-                            "py-1.5 px-2 rounded-lg text-[11px] font-bold border transition-colors inline-flex items-center justify-center gap-1 cursor-pointer",
-                            previewOrderMode === 'delivery'
-                              ? "bg-orange-500 text-white border-orange-500"
-                              : "bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100"
-                          )}
-                        >
-                          <Bike className="w-3 h-3" />
-                          Delivery
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPreviewOrderMode('pickup')}
-                          className={cn(
-                            "py-1.5 px-2 rounded-lg text-[11px] font-bold border transition-colors inline-flex items-center justify-center gap-1 cursor-pointer",
-                            previewOrderMode === 'pickup'
-                              ? "bg-orange-500 text-white border-orange-500"
-                              : "bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100"
-                          )}
-                        >
-                          <Store className="w-3 h-3" />
-                          Balcão
-                        </button>
-                      </div>
-
-                      {previewOrderMode === 'delivery' ? (
-                        <div className="bg-zinc-50 border border-zinc-200 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-700">
-                          <span className="text-zinc-500 block text-[10px]">Bairro selecionado</span>
-                          <span className="font-semibold">Centro · Taxa R$ 5,00</span>
-                        </div>
-                      ) : (
-                        <div className="bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5 text-[11px] text-orange-900 font-medium">
-                          Retirada direta no balcão (sem taxa)
-                        </div>
-                      )}
-
-                      <div>
-                        <span className="text-[10px] font-semibold text-zinc-500 block mb-1">Pagamento</span>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setPreviewPayment('pix')}
-                            className={cn(
-                              "py-1.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer",
-                              previewPayment === 'pix'
-                                ? "bg-orange-500 text-white border-orange-500"
-                                : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50"
-                            )}
-                          >
-                            PIX
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPreviewPayment('infinitepay')}
-                            className={cn(
-                              "py-1.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer",
-                              previewPayment === 'infinitepay'
-                                ? "bg-emerald-600 text-white border-emerald-600"
-                                : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50"
-                            )}
-                          >
-                            InfinitePay
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-2 border-t border-zinc-100 space-y-2">
-                      <div className="flex items-center justify-between text-xs font-bold text-zinc-900">
-                        <span>Total</span>
-                        <span className="text-orange-600 text-sm tabular-nums">
-                          {previewOrderMode === 'delivery' ? 'R$ 63,80' : 'R$ 58,80'}
-                        </span>
-                      </div>
-                      <Link
-                        to="/e/demo"
-                        className="w-full py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold flex items-center justify-center transition-colors"
-                      >
-                        Finalizar Pedido
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-zinc-800 border-t border-zinc-800 bg-zinc-950">
-                  <div className="p-4">
-                    <p className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">Pedidos Online</p>
-                    <p className="text-sm font-semibold text-white mt-0.5">Delivery por Bairro</p>
-                  </div>
-                  <div className="p-4">
-                    <p className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">Pagamentos</p>
-                    <p className="text-sm font-semibold text-white mt-0.5">PIX, Balcão e InfinitePay</p>
-                  </div>
-                  <div className="p-4">
-                    <p className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">Salão</p>
-                    <p className="text-sm font-semibold text-white mt-0.5">Mesas QR e Comandas</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Capabilities Bento Grid */}
-        <section id="recursos" className="border-t border-zinc-900 py-16 lg:py-24">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
-              <div>
-                <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand-accent mb-3">
-                  Recursos do Sistema
-                </p>
-                <h2 className="font-display font-bold text-3xl sm:text-4xl lg:text-5xl tracking-tight text-white">
-                  O que sua operação usa na prática
-                </h2>
-              </div>
-              <p className="text-sm text-zinc-400 max-w-md leading-relaxed">
-                Cada recurso abaixo está disponível no sistema de verdade, com indicação clara do que faz parte do Gratuito e do que libera no Premium.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-              {capabilities.map((cap) => (
-                <div
-                  key={cap.num}
-                  className={cn(
-                    'rounded-2xl border border-zinc-800/90 bg-zinc-950/80 p-5 sm:p-7 flex flex-col justify-between gap-5 sm:gap-6 hover:border-zinc-700 transition-colors',
-                    cap.span
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="font-display text-2xl font-bold text-brand-accent">{cap.num}</span>
-                    <span
-                      className={cn(
-                        'font-mono text-[11px] uppercase tracking-wider',
-                        cap.planScope === 'Exclusivo Premium' ? 'text-amber-400' : 'text-zinc-400'
-                      )}
-                    >
-                      {cap.planScope}
-                    </span>
-                  </div>
-                  <div>
-                    <h3 className="font-display text-xl font-bold text-white tracking-tight mb-2">
-                      {cap.title}
-                    </h3>
-                    <p className="text-sm text-zinc-400 leading-relaxed">{cap.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* How It Works */}
-        <section id="como-funciona" className="border-t border-zinc-900 py-16 lg:py-24 bg-zinc-950/40">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-            <div className="lg:col-span-5 space-y-8">
-              <div>
-                <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand-accent mb-3">
-                  Fluxo de Operação
-                </p>
-                <h2 className="font-display font-bold text-3xl sm:text-4xl tracking-tight text-white">
-                  Do cadastro ao primeiro pedido em minutos
-                </h2>
-              </div>
-
-              <div className="space-y-6">
-                {[
-                  {
-                    step: '01',
-                    title: 'Publique seu cardápio de pedidos online',
-                    desc: 'Defina o nome e o link /e/sua-loja com upload de logo, capa e produtos. No Plano Gratuito, sua loja já recebe pedidos na hora.'
-                  },
-                  {
-                    step: '02',
-                    title: 'Configure delivery, pagamentos e WhatsApp QR Code',
-                    desc: 'Cadastre cada bairro atendido com sua taxa de entrega, retirada no balcão, sua chave PIX ou InfinitePay e conecte seu WhatsApp por QR Code já no Gratuito.'
-                  },
-                  {
-                    step: '03',
-                    title: 'Gerencie delivery, balcão e escale com o salão no Premium',
-                    desc: 'Acompanhe pedidos online em fila em tempo real e, no Plano Premium, libere impressão de cupom, QR Code nas mesas, comandas abertas e reservas.'
-                  }
-                ].map((item) => (
-                  <div key={item.step} className="flex gap-4 border-b border-zinc-900 pb-5 last:border-b-0 last:pb-0">
-                    <span className="font-mono text-sm font-bold text-brand-accent pt-0.5 shrink-0">{item.step}</span>
-                    <div>
-                      <h3 className="font-display font-bold text-lg text-white mb-1">{item.title}</h3>
-                      <p className="text-sm text-zinc-400 leading-relaxed">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div>
-                <Link
-                  to="/e/demo"
-                  className="inline-flex items-center gap-2 text-sm font-bold text-brand-accent hover:text-brand-accent-hover transition-colors"
-                >
-                  Testar uma loja em funcionamento (/e/demo)
-                  <ExternalLink className="w-4 h-4" />
-                </Link>
-              </div>
-            </div>
-
-            <div className="lg:col-span-7">
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 overflow-hidden shadow-2xl">
-                {/* Real Merchant Admin Header Preview */}
-                <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/90 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="bg-orange-500 p-1.5 rounded-lg">
-                      <LayoutDashboard className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="text-xs font-bold text-white">Painel da Loja · MaisQueCardapio Demo</span>
-                  </div>
-                  <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewAdminTab('orders')}
-                      className={cn(
-                        "px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer",
-                        previewAdminTab === 'orders' ? "bg-orange-500 text-white" : "text-zinc-400 hover:text-white"
-                      )}
-                    >
-                      Pedidos
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewAdminTab('commands')}
-                      className={cn(
-                        "px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer",
-                        previewAdminTab === 'commands' ? "bg-orange-500 text-white" : "text-zinc-400 hover:text-white"
-                      )}
-                    >
-                      Comandas
-                    </button>
-                    <span className="px-2.5 py-1 text-xs font-medium text-zinc-500 hidden sm:inline">Delivery</span>
-                    <span className="px-2.5 py-1 text-xs font-medium text-zinc-500 hidden sm:inline">Mesas</span>
-                  </div>
-                </div>
-
-                {/* Live Portuguese Admin Surface */}
-                <div className="bg-zinc-50 text-zinc-900 p-4 sm:p-5 space-y-3">
-                  {previewAdminTab === 'orders' ? (
-                    <>
-                      <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
-                        <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold">
-                          <span className="px-2.5 py-1 rounded-lg bg-zinc-900 text-white">Todos (3)</span>
-                          <span className="px-2.5 py-1 rounded-lg bg-white border border-zinc-200 text-zinc-700">Delivery</span>
-                          <span className="px-2.5 py-1 rounded-lg bg-white border border-zinc-200 text-zinc-700">Balcão</span>
-                          <span className="px-2.5 py-1 rounded-lg bg-white border border-zinc-200 text-zinc-700">Mesa</span>
-                        </div>
-                        <span className="text-xs font-semibold text-orange-600">+ Novo Pedido Balcão / Mesa</span>
-                      </div>
-
-                      <div className="space-y-2.5">
-                        <div className="bg-white rounded-xl border border-zinc-200 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="space-y-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                              <span className="font-bold text-zinc-900 tabular-nums">Pedido #104</span>
-                              <span className="text-zinc-400">·</span>
-                              <span className="font-semibold text-orange-600 inline-flex items-center gap-1">
-                                <Bike className="w-3.5 h-3.5" /> Delivery · Centro
-                              </span>
-                              <span className="text-zinc-400">·</span>
-                              <span className="font-semibold text-emerald-700">Pago (InfinitePay)</span>
-                            </div>
-                            <p className="text-xs text-zinc-600 truncate">
-                              2x X-Burger Clássico, 1x Refrigerante Lata · Mariana Silva
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
-                            <span className="text-sm font-extrabold text-zinc-900 tabular-nums">R$ 63,80</span>
-                            <span className="px-2.5 py-1 rounded-lg bg-orange-50 border border-orange-200 text-orange-700 text-xs font-semibold">
-                              Em Preparo
-                            </span>
-                            <span className="p-1.5 rounded-lg bg-zinc-100 text-zinc-600" title="Imprimir cupom">
-                              <Printer className="w-3.5 h-3.5" />
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl border border-zinc-200 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="space-y-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                              <span className="font-bold text-zinc-900 tabular-nums">Pedido #105</span>
-                              <span className="text-zinc-400">·</span>
-                              <span className="font-semibold text-zinc-800 inline-flex items-center gap-1">
-                                <Store className="w-3.5 h-3.5 text-orange-500" /> Balcão / Retirada
-                              </span>
-                              <span className="text-zinc-400">·</span>
-                              <span className="font-semibold text-emerald-700">PIX Confirmado</span>
-                            </div>
-                            <p className="text-xs text-zinc-600 truncate">
-                              1x X-Bacon Especial · Rafael Souza
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
-                            <span className="text-sm font-extrabold text-zinc-900 tabular-nums">R$ 32,90</span>
-                            <span className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
-                              Pronto p/ Retirada
-                            </span>
-                            <span className="p-1.5 rounded-lg bg-zinc-100 text-zinc-600" title="Imprimir cupom">
-                              <Printer className="w-3.5 h-3.5" />
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl border border-zinc-200 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="space-y-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                              <span className="font-bold text-zinc-900 tabular-nums">Pedido #106</span>
-                              <span className="text-zinc-400">·</span>
-                              <span className="font-semibold text-zinc-800 inline-flex items-center gap-1">
-                                <QrCode className="w-3.5 h-3.5 text-orange-500" /> Mesa 04
-                              </span>
-                              <span className="text-zinc-400">·</span>
-                              <span className="text-zinc-500 font-medium">Comanda Aberta</span>
-                            </div>
-                            <p className="text-xs text-zinc-600 truncate">
-                              2x X-Burger Clássico, 2x Refrigerante Lata
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
-                            <span className="text-sm font-extrabold text-zinc-900 tabular-nums">R$ 65,80</span>
-                            <span className="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
-                              Confirmado
-                            </span>
-                            <span className="p-1.5 rounded-lg bg-zinc-100 text-zinc-600" title="Imprimir cupom">
-                              <Printer className="w-3.5 h-3.5" />
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="bg-white rounded-xl border border-zinc-200 p-4 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold text-zinc-900">Mesa 04</span>
-                          <span className="text-xs font-semibold text-emerald-700">Comanda Aberta</span>
-                        </div>
-                        <p className="text-xs text-zinc-500">Atendente: Carlos · 2 pedidos vinculados</p>
-                        <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
-                          <span className="text-xs text-zinc-500">Consumo total</span>
-                          <span className="text-sm font-extrabold text-zinc-900 tabular-nums">R$ 65,80</span>
-                        </div>
-                      </div>
-
-                      <div className="bg-white rounded-xl border border-zinc-200 p-4 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold text-zinc-900">Comanda Balcão #12</span>
-                          <span className="text-xs font-semibold text-orange-600">Em Atendimento</span>
-                        </div>
-                        <p className="text-xs text-zinc-500">Cliente: Rafael Souza · Retirada na loja</p>
-                        <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
-                          <span className="text-xs text-zinc-500">Consumo total</span>
-                          <span className="text-sm font-extrabold text-zinc-900 tabular-nums">R$ 32,90</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-5 border-t border-zinc-800 flex flex-wrap items-center justify-between gap-4">
-                  <p className="text-sm text-zinc-300 font-medium">
-                    Painel do lojista em português com fila de delivery, balcão, comandas e impressão de cupom.
-                  </p>
-                  <Link
-                    to="/e/demo/admin"
-                    className="text-xs font-mono uppercase tracking-wider text-brand-accent hover:underline whitespace-nowrap shrink-0"
-                  >
-                    Ver painel demo
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Honest Pricing & Feature Comparison */}
-        <section id="planos" className="border-t border-zinc-900 py-16 lg:py-24">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            <div className="max-w-2xl mb-10 sm:mb-14">
-              <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand-accent mb-3">
-                Planos Transparentes
-              </p>
-              <h2 className="font-display font-bold text-3xl sm:text-4xl lg:text-5xl tracking-tight text-white mb-4">
-                Plano Gratuito para começar. Premium para escalar.
-              </h2>
-              <p className="text-zinc-400 text-base leading-relaxed">
-                Sem teste temporário de 7 dias com bloqueio surpresa: use o Plano Gratuito já com delivery, balcão e WhatsApp automático pelo tempo que precisar, e faça upgrade para o Premium quando quiser liberar mesas QR Code, comandas abertas, impressão de cupom, reservas e até 100 produtos.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10 sm:mb-14">
-              {/* Plano Gratuito */}
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-6 sm:p-10 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between gap-4 mb-3">
-                    <h3 className="font-display text-2xl font-bold text-white">{freePlan.name}</h3>
-                    <span className="font-mono text-xs uppercase tracking-wider text-zinc-400">
-                      Sem mensalidade
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1.5 mb-3">
-                    <span className="font-display text-4xl sm:text-5xl font-extrabold text-white">
-                      R$ {formatBRL(freePlan.price)}
-                    </span>
-                    <span className="text-sm text-zinc-500">/mês</span>
-                  </div>
-                  <p className="text-sm text-zinc-400 mb-8">
-                    Para começar a receber pedidos online com delivery, retirada no balcão e notificações automáticas no WhatsApp sem custo fixo.
-                  </p>
-
-                  <ul className="space-y-3.5 mb-8">
-                    <li className="flex items-start gap-3 text-sm text-zinc-200">
-                      <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                      <span>Até <strong>{freePlan.max_products} produtos</strong> cadastrados no cardápio</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-zinc-200">
-                      <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                      <span>Pedidos online com Delivery (taxa por bairro) e Retirada no Balcão</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-zinc-200">
-                      <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                      <span><strong>WhatsApp Automático (Evolution QR Code)</strong> para avisos de pedido e status</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-zinc-200">
-                      <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                      <span>Pagamentos via PIX da loja, na entrega e InfinitePay</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-zinc-200">
-                      <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                      <span>Cardápio personalizável (logo, upload de capa, cores e fontes)</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-zinc-500">
-                      <X className="w-4 h-4 text-zinc-600 shrink-0 mt-0.5" />
-                      <span>Pedidos na mesa (QR Code), comandas abertas e impressão de cupom (exclusivo Premium)</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-zinc-500">
-                      <X className="w-4 h-4 text-zinc-600 shrink-0 mt-0.5" />
-                      <span>Reservas online de mesas (exclusivo Premium)</span>
-                    </li>
-                  </ul>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleSelectPlan('free')}
-                  className="w-full py-4 rounded-xl border border-zinc-700 bg-zinc-900 text-white font-bold text-sm uppercase tracking-wider hover:bg-zinc-800 hover:border-zinc-600 transition-colors cursor-pointer"
-                >
-                  Começar Grátis
-                </button>
-              </div>
-
-              {/* Plano Premium */}
-              <div className="rounded-3xl border border-brand-accent bg-zinc-950 p-6 sm:p-10 flex flex-col justify-between relative shadow-xl shadow-brand-accent/5">
-                <div>
-                  <div className="flex items-center justify-between gap-4 mb-3">
-                    <h3 className="font-display text-2xl font-bold text-white">{premiumPlan.name}</h3>
-                    <span className="font-mono text-xs uppercase tracking-wider text-brand-accent">
-                      Operação Completa
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1.5 mb-3">
-                    <span className="font-display text-4xl sm:text-5xl font-extrabold text-white">
-                      R$ {formatBRL(premiumPlan.price)}
-                    </span>
-                    <span className="text-sm text-zinc-500">/mês</span>
-                  </div>
-                  <p className="text-sm text-zinc-400 mb-8">
-                    Delivery e salão completos com catálogo ampliado, mesas QR Code, comandas abertas, impressão de cupom e reservas.
-                  </p>
-
-                  <ul className="space-y-3.5 mb-8">
-                    <li className="flex items-start gap-3 text-sm text-zinc-100">
-                      <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                      <span>Até <strong>{premiumPlan.max_products} produtos</strong> cadastrados no cardápio</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-zinc-100">
-                      <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                      <span>Tudo do Plano Gratuito (delivery por bairro, balcão, WhatsApp automático, PIX e InfinitePay)</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-zinc-100">
-                      <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                      <span><strong>Pedidos na mesa (QR Code), comandas abertas e impressão de cupom</strong></span>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-zinc-100">
-                      {premiumPlan.enable_reservations === 1 ? (
-                        <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                      ) : (
-                        <X className="w-4 h-4 text-zinc-600 shrink-0 mt-0.5" />
-                      )}
-                      <span><strong>Reservas Online de Mesas</strong> com horário e controle de convidados</span>
-                    </li>
-                    <li className="flex items-start gap-3 text-sm text-zinc-100">
-                      <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                      <span>Ativação imediata e renovação por PIX ou InfinitePay (1, 3 ou 12 meses)</span>
-                    </li>
-                  </ul>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleSelectPlan('premium')}
-                  className="w-full py-4 rounded-xl bg-brand-accent text-brand-bg font-bold text-sm uppercase tracking-wider hover:bg-brand-accent-hover transition-colors cursor-pointer"
-                >
-                  Assinar Premium
-                </button>
-              </div>
-            </div>
-
-            {/* Tabela Comparativa */}
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-              <div className="px-4 sm:px-6 py-4 border-b border-zinc-800 bg-zinc-900/40">
-                <h3 className="font-display font-bold text-base text-white">
-                  Comparativo detalhado por recurso
-                </h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-xs font-mono uppercase tracking-wider text-zinc-400">
-                      <th className="py-3.5 px-4 sm:px-6">Recurso</th>
-                      <th className="py-3.5 px-3 sm:px-6 text-center w-24 sm:w-44">{freePlan.name}</th>
-                      <th className="py-3.5 px-3 sm:px-6 text-center w-24 sm:w-44 text-brand-accent">{premiumPlan.name}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-900 text-xs sm:text-sm">
-                    {comparisonRows.map((row) => (
-                      <tr key={row.feature} className="hover:bg-zinc-900/30 transition-colors">
-                        <td className="py-3.5 px-4 sm:px-6 text-zinc-300 font-medium">{row.feature}</td>
-                        <td className="py-3.5 px-3 sm:px-6 text-center">
-                          {typeof row.free === 'string' ? (
-                            <span className="font-semibold text-zinc-200">{row.free}</span>
-                          ) : row.free ? (
-                            <Check className="w-4 h-4 text-brand-accent mx-auto" />
-                          ) : (
-                            <X className="w-4 h-4 text-zinc-600 mx-auto" />
-                          )}
-                        </td>
-                        <td className="py-3.5 px-3 sm:px-6 text-center">
-                          {typeof row.premium === 'string' ? (
-                            <span className="font-bold text-brand-accent">{row.premium}</span>
-                          ) : row.premium ? (
-                            <Check className="w-4 h-4 text-brand-accent mx-auto" />
-                          ) : (
-                            <X className="w-4 h-4 text-zinc-600 mx-auto" />
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Registration Section */}
-        <section id="register" className="border-t border-zinc-900 py-16 lg:py-24 bg-zinc-950/40">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6">
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5 sm:p-12 grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10 lg:gap-12 items-start">
-              <div className="lg:col-span-5 space-y-6">
-                <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand-accent">
-                  Cadastro da Loja
-                </p>
-                <h2 className="font-display font-bold text-2xl sm:text-4xl tracking-tight text-white leading-tight">
-                  Coloque sua loja no ar em menos de 1 minuto.
-                </h2>
-                <p className="text-sm sm:text-base text-zinc-400 leading-relaxed">
-                  Crie seu endereço exclusivo e acesse o painel administrativo imediatamente para cadastrar produtos, taxas de entrega e mesas.
-                </p>
-
-                <ul className="space-y-3.5 pt-2">
-                  <li className="flex items-start gap-3 text-sm text-zinc-300">
-                    <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                    <span>Plano Gratuito sem prazo de expiração e sem cartão de crédito</span>
-                  </li>
-                  <li className="flex items-start gap-3 text-sm text-zinc-300">
-                    <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                    <span>Link do cardápio (/e/sua-loja) gerado automaticamente</span>
-                  </li>
-                  <li className="flex items-start gap-3 text-sm text-zinc-300">
-                    <Check className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                    <span>Upgrade ou renovação do Premium via PIX ou InfinitePay direto no painel</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="lg:col-span-7 bg-brand-bg rounded-2xl border border-zinc-800 p-4 sm:p-8">
-                <form onSubmit={handleSubmit} className="space-y-5">
-                  <div>
-                    <label className="block font-mono text-[11px] uppercase tracking-wider text-zinc-400 mb-2">
-                      Plano Escolhido
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPlan('free')}
-                        className={cn(
-                          'p-3.5 rounded-xl border text-left transition-all cursor-pointer',
-                          selectedPlan === 'free'
-                            ? 'bg-brand-accent/15 border-brand-accent text-white'
-                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                        )}
-                      >
-                        <p className="text-xs font-mono uppercase tracking-wider text-brand-accent">{freePlan.name}</p>
-                        <p className="text-sm font-bold mt-0.5">R$ {formatBRL(freePlan.price)}/mês · {freePlan.max_products} itens</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPlan('premium')}
-                        className={cn(
-                          'p-3.5 rounded-xl border text-left transition-all cursor-pointer',
-                          selectedPlan === 'premium'
-                            ? 'bg-brand-accent text-brand-bg border-brand-accent'
-                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                        )}
-                      >
-                        <p className={cn('text-xs font-mono uppercase tracking-wider', selectedPlan === 'premium' ? 'text-brand-bg/80' : 'text-brand-accent')}>
-                          {premiumPlan.name}
-                        </p>
-                        <p className="text-sm font-bold mt-0.5">R$ {formatBRL(premiumPlan.price)}/mês · {premiumPlan.max_products} itens</p>
-                      </button>
-                    </div>
-                    <p className="text-xs text-zinc-500 mt-2">
-                      {selectedPlan === 'premium'
-                        ? 'Após criar a conta, você será direcionado para a aba Assinatura para ativar via PIX ou InfinitePay.'
-                        : 'Sua loja começa ativa no Plano Gratuito imediatamente, sem cobrança.'}
-                    </p>
-                  </div>
-
-                  {registerError && (
-                    <div className="bg-red-500/10 border border-red-500/40 text-red-300 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 shrink-0" />
-                      <span>{registerError}</span>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block font-mono text-[11px] uppercase tracking-wider text-zinc-400 mb-2">
-                        Nome do Estabelecimento
-                      </label>
-                      <input
-                        ref={storeNameInputRef}
-                        required
-                        value={formData.name}
-                        onChange={(e) => handleNameChange(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 px-4 py-3.5 rounded-xl outline-none focus:ring-2 focus:ring-brand-accent text-sm text-white placeholder:text-zinc-600 transition-all"
-                        placeholder="Ex: Burger do João"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-mono text-[11px] uppercase tracking-wider text-zinc-400 mb-2">
-                        URL do Cardápio
-                      </label>
-                      <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-brand-accent transition-all">
-                        <span className="pl-3.5 text-zinc-500 text-xs font-mono shrink-0">/e/</span>
-                        <input
-                          required
-                          value={formData.slug}
-                          onChange={(e) => {
-                            setSlugTouched(true);
-                            setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') });
-                          }}
-                          className="w-full bg-transparent px-2 py-3.5 outline-none text-sm text-white placeholder:text-zinc-600 font-mono"
-                          placeholder="joao-burger"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block font-mono text-[11px] uppercase tracking-wider text-zinc-400 mb-2">
-                        WhatsApp do Responsável
-                      </label>
-                      <input
-                        required
-                        type="tel"
-                        value={formData.owner_whatsapp}
-                        onChange={(e) => setFormData({ ...formData, owner_whatsapp: e.target.value.replace(/\D/g, '') })}
-                        className="w-full bg-zinc-950 border border-zinc-800 px-4 py-3.5 rounded-xl outline-none focus:ring-2 focus:ring-brand-accent text-sm text-white placeholder:text-zinc-600 transition-all"
-                        placeholder="11999999999"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-mono text-[11px] uppercase tracking-wider text-zinc-400 mb-2">
-                        Senha de Acesso
-                      </label>
-                      <input
-                        required
-                        type="password"
-                        value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        className="w-full bg-zinc-950 border border-zinc-800 px-4 py-3.5 rounded-xl outline-none focus:ring-2 focus:ring-brand-accent text-sm text-white placeholder:text-zinc-600 transition-all"
-                        placeholder="Mínimo 4 caracteres"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-brand-accent text-brand-bg py-4 rounded-xl font-bold text-sm uppercase tracking-wider hover:bg-brand-accent-hover transition-colors disabled:opacity-50 cursor-pointer"
-                  >
-                    {loading
-                      ? 'Criando conta...'
-                      : selectedPlan === 'premium'
-                        ? 'Criar Conta e Assinar Premium'
-                        : 'Criar Meu Cardápio Gratuito'}
-                  </button>
-                </form>
-              </div>
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <footer className="border-t border-zinc-900 bg-brand-bg py-10 px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6 text-center md:text-left">
-          <div className="flex items-center gap-2.5">
-            <div className="bg-brand-accent/15 p-2 rounded-xl">
-              <ChefHat className="text-brand-accent w-4 h-4" />
-            </div>
-            <span className="font-display font-bold text-lg tracking-tight text-white">MaisQueCardapio</span>
-          </div>
-          <p className="text-zinc-500 text-xs sm:text-sm">© 2026 MaisQueCardapio. Sistema de cardápio digital, mesas e delivery.</p>
-          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-xs font-mono uppercase tracking-wider">
-            <a href="#recursos" className="text-zinc-400 hover:text-white transition-colors">Recursos</a>
-            <a href="#planos" className="text-zinc-400 hover:text-white transition-colors">Planos</a>
-            <Link to="/e/demo" className="text-zinc-400 hover:text-white transition-colors">Demo</Link>
-            <Link to="/superadmin" className="text-zinc-500 hover:text-brand-accent transition-colors">Painel Mestre</Link>
-          </div>
-        </div>
-      </footer>
-
-      <AnimatePresence>
-        {isLoginModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsLoginModalOpen(false)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-md"
-            />
-            <motion.div
-              initial={{ scale: 0.94, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.94, opacity: 0 }}
-              className="relative bg-brand-surface w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl p-6 sm:p-10 border border-zinc-800"
-            >
-              <button
-                type="button"
-                onClick={() => setIsLoginModalOpen(false)}
-                className="absolute top-6 right-6 p-2 hover:bg-zinc-800 rounded-full text-zinc-400 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-              <h2 className="font-display text-2xl font-bold mb-6 tracking-tight">
-                Login <span className="text-brand-accent">Lojista</span>
-              </h2>
-              {loginError && (
-                <div className="mb-5 bg-red-500/10 border border-red-500/40 text-red-300 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{loginError}</span>
-                </div>
-              )}
-              <form onSubmit={handleLogin} className="space-y-5">
-                <div>
-                  <label className="block font-mono text-[11px] text-zinc-400 uppercase mb-2 tracking-wider">
-                    WhatsApp (com DDD)
-                  </label>
-                  <input
-                    required
-                    type="text"
-                    value={loginData.slug}
-                    onChange={(e) => setLoginData({ ...loginData, slug: e.target.value.replace(/\D/g, '') })}
-                    className="w-full bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-brand-accent text-sm text-white"
-                    placeholder="5511999999999"
-                  />
-                </div>
-                <div>
-                  <label className="block font-mono text-[11px] text-zinc-400 uppercase mb-2 tracking-wider">
-                    Senha
-                  </label>
-                  <input
-                    required
-                    type="password"
-                    value={loginData.password || ''}
-                    onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-brand-accent text-sm text-white"
-                    placeholder="Sua senha"
-                  />
-                </div>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Você será redirecionado diretamente para o painel administrativo da sua loja.
-                </p>
-                <button
-                  type="submit"
-                  disabled={loginLoading}
-                  className="w-full bg-brand-accent text-brand-bg py-4 rounded-xl font-bold text-sm uppercase tracking-wider hover:bg-brand-accent-hover transition-colors disabled:opacity-50 cursor-pointer"
-                >
-                  {loginLoading ? 'Entrando...' : 'Entrar no Painel'}
-                </button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal de Sucesso no Registro */}
-      <AnimatePresence>
-        {registrationSuccess && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.94, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.94, opacity: 0 }}
-              className="relative bg-brand-surface w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl p-6 sm:p-10 border border-brand-accent/30"
-            >
-              <div className="text-center mb-7">
-                <div className="bg-brand-accent/15 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                  <Check className="w-8 h-8 text-brand-accent" />
-                </div>
-                <h2 className="font-display text-2xl sm:text-3xl font-bold mb-2 tracking-tight">
-                  Cadastro <span className="text-brand-accent">Realizado</span>
-                </h2>
-                <p className="text-sm text-zinc-400">Guarde seus dados de acesso ao painel:</p>
-              </div>
-
-              <div className="bg-zinc-950 rounded-2xl p-5 mb-6 border border-zinc-800">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center py-2.5 border-b border-zinc-800 gap-3">
-                    <span className="text-zinc-500 text-xs font-mono uppercase shrink-0">URL do Cardápio</span>
-                    <span className="text-brand-accent font-mono text-xs truncate">
-                      {typeof window !== 'undefined' ? window.location.origin : ''}/e/{registrationSuccess.slug}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center py-2.5 border-b border-zinc-800">
-                    <span className="text-zinc-500 text-xs font-mono uppercase">WhatsApp</span>
-                    <span className="text-white font-mono text-sm">{registrationSuccess.whatsapp}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2.5">
-                    <span className="text-zinc-500 text-xs font-mono uppercase">Senha</span>
-                    <span className="text-white font-mono text-sm">{registrationSuccess.password}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-                    navigator.clipboard.writeText(
-                      `URL: ${origin}/e/${registrationSuccess.slug}\nWhatsApp: ${registrationSuccess.whatsapp}\nSenha: ${registrationSuccess.password}`
-                    );
-                    setCopiedCreds(true);
-                    setTimeout(() => setCopiedCreds(false), 2500);
-                  }}
-                  className="flex-1 bg-zinc-800 text-white py-3.5 rounded-xl font-semibold text-sm hover:bg-zinc-700 transition-colors border border-zinc-700 cursor-pointer"
-                >
-                  {copiedCreds ? 'Dados Copiados!' : 'Copiar Dados'}
-                </button>
-                <Link
-                  to={
-                    registrationSuccess.plan === 'premium'
-                      ? `/e/${registrationSuccess.slug}/admin/assinatura`
-                      : `/e/${registrationSuccess.slug}/admin`
-                  }
-                  className="flex-1 bg-brand-accent text-brand-bg py-3.5 rounded-xl font-bold text-sm uppercase tracking-wider text-center hover:bg-brand-accent-hover transition-colors"
-                >
-                  {registrationSuccess.plan === 'premium' ? 'Pagar e Ativar Premium' : 'Acessar Painel'}
-                </Link>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
+// LandingPage imported from ./components/LandingPage
 
 const SuperAdmin = () => {
   const [establishments, setEstablishments] = useState<any[]>([]);
