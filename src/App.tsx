@@ -622,8 +622,9 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
 
   const filteredProducts = products.filter(p => {
     const matchesCategory = selectedCategory === null || p.category_id === selectedCategory;
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          p.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = String(p.name || '').toLowerCase().includes(q) || 
+                          String(p.description || '').toLowerCase().includes(q);
     return matchesCategory && matchesSearch;
   });
 
@@ -1016,13 +1017,19 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                           ? "bg-emerald-600 text-white"
                           : canOrder
                             ? "bg-orange-500 text-white shadow-sm"
-                            : isDarkTheme ? "bg-zinc-800 text-zinc-500" : "bg-zinc-100 text-zinc-400"
+                            : !product.is_available
+                              ? isDarkTheme ? "bg-red-500/15 text-red-400 border border-red-500/20" : "bg-red-50 text-red-600 border border-red-200"
+                              : isDarkTheme ? "bg-zinc-800 text-zinc-500" : "bg-zinc-100 text-zinc-400"
                       )}>
                         {addedProductId === product.id ? (
                           <>
                             <Check className="w-3.5 h-3.5" />
                             Adicionado
                           </>
+                        ) : !product.is_available ? (
+                          <span>Indisponível</span>
+                        ) : settings.is_open !== "1" ? (
+                          <span>Loja fechada</span>
                         ) : (
                           <>
                             <Plus className="w-3.5 h-3.5" />
@@ -1036,7 +1043,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                     "relative w-22 h-22 sm:w-32 sm:h-28 rounded-xl overflow-hidden flex-shrink-0 border self-center sm:self-auto",
                     isDarkTheme ? "bg-zinc-800 border-zinc-700" : "bg-zinc-100 border-zinc-200/70"
                   )}>
-                    {!imgFailed ? (
+                    {product.image_url && !imgFailed ? (
                       <img 
                         src={product.image_url} 
                         alt={product.name}
@@ -1052,7 +1059,7 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
                     )}
                     {!product.is_available && (
                       <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px] flex items-center justify-center">
-                        <span className="bg-white text-zinc-900 px-2 py-1 rounded-md text-[10px] font-bold">Esgotado</span>
+                        <span className="bg-white text-zinc-900 px-2 py-1 rounded-md text-[10px] font-bold">Indisponível</span>
                       </div>
                     )}
                   </div>
@@ -2348,6 +2355,9 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
   const [copiedStoreLink, setCopiedStoreLink] = useState(false);
   const [orderSearch, setOrderSearch] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
+  const [productSearch, setProductSearch] = useState('');
+  const [productAvailabilityFilter, setProductAvailabilityFilter] = useState<'all' | 'available' | 'unavailable'>('all');
+  const [togglingProductId, setTogglingProductId] = useState<number | null>(null);
 
   const handleLogin = () => {
     setIsLoggedIn(true);
@@ -2493,6 +2503,13 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
   const [isPrintViewOpen, setIsPrintViewOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryFormError, setCategoryFormError] = useState('');
+  const [productFormError, setProductFormError] = useState('');
+  const [productSubmitting, setProductSubmitting] = useState(false);
+  const [showInlineCategoryInput, setShowInlineCategoryInput] = useState(false);
+  const [inlineCategoryName, setInlineCategoryName] = useState('');
+  const [inlineCategoryLoading, setInlineCategoryLoading] = useState(false);
 
   const [orderTypeFilter, setOrderTypeFilter] = useState<'all' | 'pickup' | 'table' | 'delivery'>('all');
   const [isCounterOrderModalOpen, setIsCounterOrderModalOpen] = useState(false);
@@ -2710,38 +2727,67 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
 
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const url = editingProduct ? `/products/${editingProduct.id}` : '/products';
-    const method = editingProduct ? 'PUT' : 'POST';
-    
-    const res = await apiFetch(url, {
-      method,
-      body: JSON.stringify({
-        ...formData,
-        price: parseFloat(formData.price),
-        category_id: parseInt(formData.category_id),
-        is_available: editingProduct ? editingProduct.is_available : true
-      })
-    });
+    setProductFormError('');
 
-    if (!res.ok) {
-      const data = await res.json();
-      alert(data.error);
+    const cleanName = formData.name.trim();
+    const parsedPrice = parseFloat(String(formData.price).replace(',', '.'));
+    if (!cleanName) {
+      setProductFormError('Informe o nome do produto.');
+      return;
+    }
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      setProductFormError('Informe um preço válido (ex: 29.90).');
       return;
     }
 
-    setIsProductModalOpen(false);
-    setEditingProduct(null);
-    setFormData({ name: '', description: '', price: '', image_url: '', category_id: '' });
-    apiFetch('/products').then(res => res.json()).then(setProducts);
+    const effectiveCategoryId = formData.category_id || (categories[0]?.id ? String(categories[0].id) : '');
+    const parsedCatId = effectiveCategoryId ? parseInt(effectiveCategoryId, 10) : null;
+
+    setProductSubmitting(true);
+    try {
+      const url = editingProduct ? `/products/${editingProduct.id}` : '/products';
+      const method = editingProduct ? 'PUT' : 'POST';
+
+      const res = await apiFetch(url, {
+        method,
+        body: JSON.stringify({
+          ...formData,
+          name: cleanName,
+          description: formData.description.trim(),
+          price: parsedPrice,
+          category_id: parsedCatId && Number.isFinite(parsedCatId) ? parsedCatId : null,
+          is_available: editingProduct ? editingProduct.is_available : true
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setProductFormError(data.error || 'Não foi possível salvar o produto.');
+        return;
+      }
+
+      setIsProductModalOpen(false);
+      setEditingProduct(null);
+      setProductFormError('');
+      setShowInlineCategoryInput(false);
+      setInlineCategoryName('');
+      setFormData({ name: '', description: '', price: '', image_url: '', category_id: '' });
+      apiFetch('/products').then(r => r.json()).then(setProducts);
+    } catch {
+      setProductFormError('Erro de conexão ao salvar produto. Tente novamente.');
+    } finally {
+      setProductSubmitting(false);
+    }
   };
 
   const handleNeighborhoodSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const parsedFee = parseFloat(String(neighborhoodData.delivery_fee).replace(',', '.'));
     await apiFetch('/neighborhoods', {
       method: 'POST',
       body: JSON.stringify({
-        ...neighborhoodData,
-        delivery_fee: parseFloat(neighborhoodData.delivery_fee)
+        name: neighborhoodData.name.trim(),
+        delivery_fee: Number.isFinite(parsedFee) ? parsedFee : 0
       })
     });
     setIsNeighborhoodModalOpen(false);
@@ -2751,34 +2797,123 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
 
   const handleCategorySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await apiFetch('/categories', {
-      method: 'POST',
-      body: JSON.stringify(categoryData)
+    setCategoryFormError('');
+    const cleanName = categoryData.name.trim();
+    if (!cleanName) {
+      setCategoryFormError('Informe o nome da categoria.');
+      return;
+    }
+
+    try {
+      const url = editingCategory ? `/categories/${editingCategory.id}` : '/categories';
+      const method = editingCategory ? 'PUT' : 'POST';
+      const res = await apiFetch(url, {
+        method,
+        body: JSON.stringify({ name: cleanName })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCategoryFormError(data.error || 'Erro ao salvar categoria.');
+        return;
+      }
+
+      const updatedCats = await apiFetch('/categories').then(r => r.json());
+      if (Array.isArray(updatedCats)) {
+        setCategories(updatedCats);
+      }
+      if (!editingCategory && data.id) {
+        setFormData(prev => ({ ...prev, category_id: String(data.id) }));
+      }
+      setIsCategoryModalOpen(false);
+      setEditingCategory(null);
+      setCategoryData({ name: '' });
+    } catch {
+      setCategoryFormError('Erro de conexão ao salvar categoria.');
+    }
+  };
+
+  const handleInlineCreateCategory = async () => {
+    const cleanName = inlineCategoryName.trim();
+    if (!cleanName) {
+      setProductFormError('Digite o nome da nova categoria antes de criar.');
+      return;
+    }
+    setProductFormError('');
+    setInlineCategoryLoading(true);
+    try {
+      const res = await apiFetch('/categories', {
+        method: 'POST',
+        body: JSON.stringify({ name: cleanName })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setProductFormError(data.error || 'Erro ao criar categoria.');
+        return;
+      }
+      const updatedCats = await apiFetch('/categories').then(r => r.json());
+      if (Array.isArray(updatedCats)) {
+        setCategories(updatedCats);
+      }
+      if (data.id) {
+        setFormData(prev => ({ ...prev, category_id: String(data.id) }));
+      }
+      setInlineCategoryName('');
+      setShowInlineCategoryInput(false);
+    } catch {
+      setProductFormError('Erro de conexão ao criar categoria.');
+    } finally {
+      setInlineCategoryLoading(false);
+    }
+  };
+
+  const openNewProductModal = () => {
+    setEditingProduct(null);
+    setProductFormError('');
+    setShowInlineCategoryInput(categories.length === 0);
+    setInlineCategoryName('');
+    setFormData({
+      name: '',
+      description: '',
+      price: '',
+      image_url: '',
+      category_id: categories[0]?.id ? String(categories[0].id) : ''
     });
-    setIsCategoryModalOpen(false);
-    setCategoryData({ name: '' });
-    apiFetch('/categories').then(res => res.json()).then(setCategories);
+    setIsProductModalOpen(true);
   };
 
   const openEditProduct = (product: Product) => {
     setEditingProduct(product);
+    setProductFormError('');
+    setShowInlineCategoryInput(false);
+    setInlineCategoryName('');
     setFormData({
-      name: product.name,
-      description: product.description,
-      price: product.price.toString(),
-      image_url: product.image_url,
-      category_id: product.category_id.toString()
+      name: product.name || '',
+      description: product.description || '',
+      price: product.price != null ? String(product.price) : '',
+      image_url: product.image_url || '',
+      category_id: product.category_id != null ? String(product.category_id) : (categories[0]?.id ? String(categories[0].id) : '')
     });
     setIsProductModalOpen(true);
   };
 
   const toggleAvailability = async (product: Product) => {
-    const updated = { ...product, is_available: !product.is_available };
-    await apiFetch(`/products/${product.id}`, {
-      method: 'PUT',
-      body: JSON.stringify(updated)
-    });
+    const nextAvailable = !product.is_available;
+    const updated = { ...product, is_available: nextAvailable };
+    setTogglingProductId(product.id);
     setProducts(prev => prev.map(p => p.id === product.id ? updated : p));
+    try {
+      const res = await apiFetch(`/products/${product.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updated)
+      });
+      if (!res.ok) {
+        setProducts(prev => prev.map(p => p.id === product.id ? product : p));
+      }
+    } catch {
+      setProducts(prev => prev.map(p => p.id === product.id ? product : p));
+    } finally {
+      setTogglingProductId(null);
+    }
   };
 
   const deleteProduct = async (id: number) => {
@@ -2800,13 +2935,13 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             <h1 className="text-2xl sm:text-4xl font-black uppercase tracking-tighter">Painel <span className="text-brand-accent">Administrativo</span></h1>
             <p className="text-zinc-500 font-bold uppercase text-xs tracking-widest mt-1">Gerencie seu cardápio e pedidos</p>
           </div>
-          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2.5 sm:gap-3 w-full md:w-auto">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
             <Link
               to={`/e/${slug}/admin/assinatura`}
-              className="px-3 sm:px-5 py-3 sm:py-3.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-2 sm:gap-2.5 transition-all shadow-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-purple-500/5 hover:bg-purple-500/20"
+              className="px-2.5 sm:px-5 py-2.5 sm:py-3.5 rounded-2xl font-black text-[11px] sm:text-sm uppercase tracking-normal sm:tracking-widest flex items-center justify-center gap-1.5 sm:gap-2.5 transition-all shadow-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-purple-500/5 hover:bg-purple-500/20 min-w-0"
             >
               <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-              <span>Assinatura</span>
+              <span className="truncate">Assinatura</span>
             </Link>
             <button 
               onClick={async () => {
@@ -2819,22 +2954,19 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                 setSettings(updatedSettings);
               }}
               className={cn(
-                "px-3 sm:px-6 py-3 sm:py-3.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-2 sm:gap-2.5 transition-all shadow-xl",
+                "px-2.5 sm:px-6 py-2.5 sm:py-3.5 rounded-2xl font-black text-[11px] sm:text-sm uppercase tracking-normal sm:tracking-widest flex items-center justify-center gap-1.5 sm:gap-2.5 transition-all shadow-xl min-w-0",
                 settings.is_open === "1" 
                   ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shadow-emerald-500/5" 
                   : "bg-red-500/10 text-red-500 border border-red-500/20 shadow-red-500/5"
               )}
             >
               <Power className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-              <span>{settings.is_open === "1" ? "Aberto" : "Fechado"}</span>
+              <span className="truncate">{settings.is_open === "1" ? "Aberto" : "Fechado"}</span>
             </button>
             <button 
-              onClick={() => {
-                setEditingProduct(null);
-                setFormData({ name: '', description: '', price: '', image_url: '', category_id: categories[0]?.id.toString() || '' });
-                setIsProductModalOpen(true);
-              }}
-              className="col-span-2 sm:col-span-1 bg-brand-accent text-brand-bg px-4 sm:px-6 py-3 sm:py-3.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-2 sm:gap-2.5 hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20"
+              type="button"
+              onClick={openNewProductModal}
+              className="col-span-2 sm:col-span-1 bg-brand-accent text-brand-bg px-3.5 sm:px-6 py-3 sm:py-3.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-normal sm:tracking-widest flex items-center justify-center gap-2 sm:gap-2.5 hover:bg-brand-accent-hover transition-all shadow-xl shadow-brand-accent/20 cursor-pointer"
             >
               <Plus className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /> Novo Produto
             </button>
@@ -2842,14 +2974,14 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
         </div>
 
         {/* Barra Rápida de Link do Cardápio & Sincronização ao Vivo */}
-        <div className="mb-6 rounded-2xl border border-zinc-800 bg-brand-surface px-4 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
-            <span className="text-xs font-semibold text-zinc-400">Link do cardápio:</span>
+        <div className="mb-6 rounded-2xl border border-zinc-800 bg-brand-surface px-3.5 sm:px-4 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className="text-xs font-semibold text-zinc-400 shrink-0">Link do cardápio:</span>
             <span className="font-mono text-xs sm:text-sm text-brand-accent truncate max-w-full">
               {typeof window !== 'undefined' ? `${window.location.origin}/e/${slug}` : `/e/${slug}`}
             </span>
           </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full lg:w-auto shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -2858,40 +2990,40 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                 setCopiedStoreLink(true);
                 setTimeout(() => setCopiedStoreLink(false), 2200);
               }}
-              className="px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-2.5 sm:px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-[11px] sm:text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer min-w-0"
             >
-              {copiedStoreLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-zinc-400" />}
-              {copiedStoreLink ? 'Link Copiado!' : 'Copiar Link'}
+              {copiedStoreLink ? <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> : <Copy className="w-3.5 h-3.5 text-zinc-400 shrink-0" />}
+              <span className="truncate">{copiedStoreLink ? 'Copiado!' : 'Copiar Link'}</span>
             </button>
             <Link
               to={`/e/${slug}`}
-              className="px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors"
+              className="px-2.5 sm:px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-[11px] sm:text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition-colors min-w-0"
             >
-              <ExternalLink className="w-3.5 h-3.5 text-brand-accent" />
-              Abrir Cardápio
+              <ExternalLink className="w-3.5 h-3.5 text-brand-accent shrink-0" />
+              <span className="truncate">Abrir Cardápio</span>
             </Link>
             <button
               type="button"
               onClick={() => setAutoRefresh(prev => !prev)}
               className={cn(
-                "px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer",
+                "px-2.5 sm:px-3 py-2 rounded-xl border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer min-w-0",
                 autoRefresh
                   ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                   : "border-zinc-700 bg-zinc-900 text-zinc-400"
               )}
               title="Atualiza pedidos, comandas e faturamento automaticamente a cada 15 segundos"
             >
-              <Clock className="w-3.5 h-3.5" />
-              {autoRefresh ? 'Ao vivo (15s)' : 'Auto pausado'}
+              <Clock className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{autoRefresh ? 'Ao vivo (15s)' : 'Auto pausado'}</span>
             </button>
             <button
               type="button"
               onClick={refreshLiveOperations}
               disabled={refreshingLive}
-              className="px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs font-semibold text-zinc-200 flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+              className="px-2.5 sm:px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-[11px] sm:text-xs font-semibold text-zinc-200 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer min-w-0"
             >
-              <RefreshCw className={cn("w-3.5 h-3.5", refreshingLive && "animate-spin")} />
-              Atualizar
+              <RefreshCw className={cn("w-3.5 h-3.5 shrink-0", refreshingLive && "animate-spin")} />
+              <span className="truncate">Atualizar</span>
             </button>
           </div>
         </div>
@@ -2987,6 +3119,91 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
           );
         })()}
 
+        {/* Primeiros Passos — Guia de Configuração Inicial para Lojas Novas */}
+        {products.length === 0 && (
+          <div className="mb-8 rounded-2xl border border-orange-500/35 bg-orange-500/10 p-5 sm:p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="font-display font-bold text-lg sm:text-xl text-white">
+                  Primeiros passos para começar a vender
+                </h2>
+                <p className="text-xs sm:text-sm text-zinc-300 mt-0.5">
+                  Configure suas categorias, cadastre seus primeiros produtos e defina os bairros de entrega.
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-orange-300 tabular-nums shrink-0">
+                {[categories.length > 0, products.length > 0, neighborhoods.length > 0].filter(Boolean).length} de 3 concluídos
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/90 p-4 flex flex-col justify-between gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-bold text-white">1. Categorias do Cardápio</p>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      {categories.length > 0
+                        ? `${categories.length} ${categories.length === 1 ? 'categoria cadastrada' : 'categorias cadastradas'}.`
+                        : 'Crie categorias como Lanches, Pizzas ou Bebidas.'}
+                    </p>
+                  </div>
+                  {categories.length > 0 && <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingCategory(null);
+                    setCategoryData({ name: '' });
+                    setCategoryFormError('');
+                    setIsCategoryModalOpen(true);
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs font-bold text-white transition-colors cursor-pointer"
+                >
+                  + Nova Categoria
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/90 p-4 flex flex-col justify-between gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-bold text-white">2. Primeiro Produto</p>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      Adicione nome, preço, foto e escolha ou crie a categoria direto no formulário.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={openNewProductModal}
+                  className="w-full py-2.5 px-3 rounded-xl bg-orange-500 hover:bg-orange-400 text-xs font-bold text-zinc-950 transition-colors cursor-pointer"
+                >
+                  + Cadastrar Primeiro Produto
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/90 p-4 flex flex-col justify-between gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-bold text-white">3. Taxas por Bairro</p>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      {neighborhoods.length > 0
+                        ? `${neighborhoods.length} ${neighborhoods.length === 1 ? 'bairro configurado' : 'bairros configurados'}.`
+                        : 'Defina os bairros atendidos e o valor da entrega.'}
+                    </p>
+                  </div>
+                  {neighborhoods.length > 0 && <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsNeighborhoodModalOpen(true)}
+                  className="w-full py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs font-bold text-white transition-colors cursor-pointer"
+                >
+                  + Adicionar Bairro
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-1 sm:gap-2 mb-8 border-b border-zinc-800 overflow-x-auto no-scrollbar whitespace-nowrap pb-1">
           {[
             { id: 'orders', label: 'Pedidos', icon: ShoppingCart },
@@ -3025,71 +3242,299 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
           })}
         </div>
 
-        {activeTab === 'products' && (
+        {activeTab === 'products' && (() => {
+          const pq = productSearch.trim().toLowerCase();
+          const availableCount = products.filter(p => Boolean(p.is_available)).length;
+          const unavailableCount = products.length - availableCount;
+          const filteredAdminProducts = products.filter(p => {
+            if (productAvailabilityFilter === 'available' && !p.is_available) return false;
+            if (productAvailabilityFilter === 'unavailable' && p.is_available) return false;
+            if (!pq) return true;
+            const catName = categories.find(c => c.id === p.category_id)?.name || '';
+            return (
+              String(p.name || '').toLowerCase().includes(pq) ||
+              String(catName).toLowerCase().includes(pq)
+            );
+          });
+
+          return (
           <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-zinc-100">
-              <h2 className="font-bold text-lg text-zinc-900">Lista de Produtos</h2>
+            <div className="p-4 sm:p-6 border-b border-zinc-100 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-lg text-zinc-900">Lista de Produtos</h2>
+                  <p className="text-xs text-zinc-500">
+                    {availableCount} {availableCount === 1 ? 'disponível' : 'disponíveis'} · {unavailableCount} {unavailableCount === 1 ? 'indisponível' : 'indisponíveis'} · alterne com 1 toque
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingCategory(null);
+                      setCategoryData({ name: '' });
+                      setCategoryFormError('');
+                      setIsCategoryModalOpen(true);
+                    }}
+                    className="justify-center px-3 sm:px-3.5 py-2 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4 shrink-0" /> Nova Categoria
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openNewProductModal}
+                    className="justify-center px-3 sm:px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4 shrink-0" /> Novo Produto
+                  </button>
+                </div>
+              </div>
+
+              {products.length > 0 && (
+                <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center justify-between">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={productSearch}
+                      onChange={e => setProductSearch(e.target.value)}
+                      placeholder="Buscar produto ou categoria para pausar/ativar..."
+                      className="w-full bg-zinc-50 text-zinc-900 placeholder:text-zinc-400 border border-zinc-200 pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 sm:flex items-center gap-1.5">
+                    {[
+                      { id: 'all', label: `Todos (${products.length})` },
+                      { id: 'available', label: `Ativos (${availableCount})` },
+                      { id: 'unavailable', label: `Pausados (${unavailableCount})` }
+                    ].map(f => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setProductAvailabilityFilter(f.id as any)}
+                        className={cn(
+                          "px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-colors cursor-pointer text-center truncate",
+                          productAvailabilityFilter === f.id
+                            ? "bg-zinc-900 text-white"
+                            : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                        )}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-zinc-50 text-zinc-500 text-xs uppercase tracking-wider">
-                  <tr>
-                    <th className="px-6 py-4 font-semibold">Produto</th>
-                    <th className="px-6 py-4 font-semibold">Categoria</th>
-                    <th className="px-6 py-4 font-semibold">Preço</th>
-                    <th className="px-6 py-4 font-semibold">Status</th>
-                    <th className="px-6 py-4 font-semibold text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {products.map(product => (
-                    <tr key={product.id} className="hover:bg-zinc-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <img src={product.image_url} className="w-12 h-12 rounded-lg object-cover" referrerPolicy="no-referrer" />
-                          <span className="font-medium text-zinc-900">{product.name}</span>
+
+            {products.length === 0 ? (
+              <div className="p-10 sm:p-14 text-center space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center mx-auto">
+                  <ChefHat className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <p className="font-bold text-zinc-900 text-base">Nenhum produto cadastrado ainda</p>
+                  <p className="text-zinc-500 text-sm max-w-md mx-auto">
+                    Cadastre seu primeiro item agora — você pode selecionar uma categoria ou criar uma nova direto no formulário.
+                  </p>
+                </div>
+                <div className="flex flex-wrap justify-center gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={openNewProductModal}
+                    className="px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" /> Cadastrar Primeiro Produto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('categories')}
+                    className="px-5 py-2.5 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-800 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Gerenciar Categorias
+                  </button>
+                </div>
+              </div>
+            ) : filteredAdminProducts.length === 0 ? (
+              <div className="p-10 text-center space-y-2">
+                <p className="font-bold text-zinc-900 text-sm">Nenhum produto encontrado neste filtro.</p>
+                <button
+                  type="button"
+                  onClick={() => { setProductSearch(''); setProductAvailabilityFilter('all'); }}
+                  className="text-xs font-bold text-orange-600 hover:underline cursor-pointer"
+                >
+                  Limpar busca e filtros
+                </button>
+              </div>
+            ) : (
+            <>
+              {/* Mobile Card View — Switch Disponível/Indisponível visível sem rolar tabela */}
+              <div className="divide-y divide-zinc-100 md:hidden">
+                {filteredAdminProducts.map(product => {
+                  const catName = categories.find(c => c.id === product.category_id)?.name;
+                  const isAvailable = Boolean(product.is_available);
+                  return (
+                    <div key={product.id} className={cn("p-4 space-y-3 transition-colors", !isAvailable && "bg-zinc-50/80")}>
+                      <div className="flex items-start gap-3">
+                        {product.image_url ? (
+                          <img src={product.image_url} alt={product.name} className={cn("w-14 h-14 rounded-xl object-cover shrink-0 bg-zinc-100", !isAvailable && "opacity-60 grayscale")} referrerPolicy="no-referrer" />
+                        ) : (
+                          <div className="w-14 h-14 rounded-xl bg-zinc-100 text-zinc-400 flex items-center justify-center shrink-0">
+                            <ChefHat className="w-5 h-5" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className={cn("font-bold text-sm leading-snug truncate", isAvailable ? "text-zinc-900" : "text-zinc-500")}>
+                            {product.name}
+                          </p>
+                          <p className="text-xs text-zinc-500 truncate">
+                            {catName || 'Sem categoria'}
+                          </p>
+                          <p className="text-sm font-extrabold text-zinc-900 tabular-nums mt-0.5">
+                            R$ {(parseFloat(String(product.price)) || 0).toFixed(2)}
+                          </p>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 text-zinc-500">
-                        {categories.find(c => c.id === product.category_id)?.name}
-                      </td>
-                      <td className="px-6 py-4 font-bold text-zinc-900">
-                        R$ {(parseFloat(product.price) || 0).toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4">
+                      </div>
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100">
                         <button
+                          type="button"
+                          role="switch"
+                          aria-checked={isAvailable}
+                          disabled={togglingProductId === product.id}
                           onClick={() => toggleAvailability(product)}
                           className={cn(
-                            "px-3 py-1 rounded-full text-xs font-bold transition-all",
-                            product.is_available ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                            "inline-flex items-center gap-2.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer disabled:opacity-60",
+                            isAvailable
+                              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                              : "bg-red-50 border-red-200 text-red-700"
                           )}
                         >
-                          {product.is_available ? 'Disponível' : 'Indisponível'}
+                          <span className={cn(
+                            "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+                            isAvailable ? "bg-emerald-500" : "bg-red-400"
+                          )}>
+                            <span className={cn(
+                              "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform",
+                              isAvailable ? "translate-x-4.5" : "translate-x-1"
+                            )} />
+                          </span>
+                          <span>{isAvailable ? 'Disponível' : 'Indisponível'}</span>
                         </button>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button 
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
                             onClick={() => openEditProduct(product)}
-                            className="p-2 text-zinc-400 hover:text-blue-500 transition-colors"
+                            className="p-2 rounded-lg text-zinc-500 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                            title="Editar produto"
                           >
-                            <Settings className="w-5 h-5" />
+                            <Edit2 className="w-4 h-4" />
                           </button>
-                          <button 
+                          <button
+                            type="button"
                             onClick={() => deleteProduct(product.id)}
-                            className="p-2 text-zinc-400 hover:text-red-500 transition-colors"
+                            className="p-2 rounded-lg text-zinc-500 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                            title="Remover produto"
                           >
-                            <Trash2 className="w-5 h-5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
-                      </td>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-zinc-50 text-zinc-500 text-xs uppercase tracking-wider">
+                    <tr>
+                      <th className="px-6 py-4 font-semibold">Produto</th>
+                      <th className="px-6 py-4 font-semibold">Categoria</th>
+                      <th className="px-6 py-4 font-semibold">Preço</th>
+                      <th className="px-6 py-4 font-semibold">Disponibilidade</th>
+                      <th className="px-6 py-4 font-semibold text-right">Ações</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {filteredAdminProducts.map(product => {
+                      const isAvailable = Boolean(product.is_available);
+                      return (
+                      <tr key={product.id} className={cn("hover:bg-zinc-50 transition-colors", !isAvailable && "bg-zinc-50/70")}>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            {product.image_url ? (
+                              <img src={product.image_url} alt={product.name} className={cn("w-12 h-12 rounded-lg object-cover shrink-0 bg-zinc-100", !isAvailable && "opacity-60 grayscale")} referrerPolicy="no-referrer" />
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg bg-zinc-100 text-zinc-400 flex items-center justify-center shrink-0">
+                                <ChefHat className="w-5 h-5" />
+                              </div>
+                            )}
+                            <span className={cn("font-medium", isAvailable ? "text-zinc-900" : "text-zinc-500")}>{product.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-zinc-500">
+                          {categories.find(c => c.id === product.category_id)?.name || <span className="text-zinc-400 italic">Sem categoria</span>}
+                        </td>
+                        <td className="px-6 py-4 font-bold text-zinc-900 tabular-nums">
+                          R$ {(parseFloat(String(product.price)) || 0).toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={isAvailable}
+                            disabled={togglingProductId === product.id}
+                            onClick={() => toggleAvailability(product)}
+                            className={cn(
+                              "inline-flex items-center gap-2.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer disabled:opacity-60",
+                              isAvailable
+                                ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                                : "bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
+                            )}
+                            title={isAvailable ? "Clique para marcar como Indisponível" : "Clique para marcar como Disponível"}
+                          >
+                            <span className={cn(
+                              "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+                              isAvailable ? "bg-emerald-500" : "bg-red-400"
+                            )}>
+                              <span className={cn(
+                                "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform",
+                                isAvailable ? "translate-x-4.5" : "translate-x-1"
+                              )} />
+                            </span>
+                            <span>{isAvailable ? 'Disponível' : 'Indisponível'}</span>
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button 
+                              onClick={() => openEditProduct(product)}
+                              className="p-2 text-zinc-400 hover:text-blue-500 transition-colors cursor-pointer"
+                              title="Editar produto"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => deleteProduct(product.id)}
+                              className="p-2 text-zinc-400 hover:text-red-500 transition-colors cursor-pointer"
+                              title="Remover produto"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+            )}
           </div>
-        )}
+          );
+        })()}
 
         {activeTab === 'tables' && (
           !hasTablesAndPrint ? (
@@ -3167,14 +3612,34 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
         {activeTab === 'delivery' && (
           <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
             <div className="p-4 sm:p-6 border-b border-zinc-100 flex flex-wrap justify-between items-center gap-3">
-              <h2 className="font-bold text-lg text-zinc-900">Taxas por Bairro</h2>
+              <div>
+                <h2 className="font-bold text-lg text-zinc-900">Taxas por Bairro</h2>
+                <p className="text-xs text-zinc-500">Configure os bairros atendidos no delivery e a taxa de cada região</p>
+              </div>
               <button 
+                type="button"
                 onClick={() => setIsNeighborhoodModalOpen(true)}
-                className="text-orange-500 font-bold text-sm"
+                className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                + Adicionar Bairro
+                <Plus className="w-4 h-4" /> Adicionar Bairro
               </button>
             </div>
+            {neighborhoods.length === 0 ? (
+              <div className="p-10 text-center space-y-3">
+                <Bike className="w-10 h-10 text-zinc-300 mx-auto" />
+                <p className="font-bold text-zinc-900">Nenhum bairro cadastrado</p>
+                <p className="text-sm text-zinc-500 max-w-md mx-auto">
+                  Cadastre pelo menos um bairro para permitir pedidos de delivery no seu cardápio.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsNeighborhoodModalOpen(true)}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" /> Cadastrar Primeiro Bairro
+                </button>
+              </div>
+            ) : (
             <div className="divide-y divide-zinc-100">
               {neighborhoods.map(n => (
                 <div key={n.id} className="p-4 sm:p-6 flex justify-between items-center gap-3 hover:bg-zinc-50 transition-colors">
@@ -3183,7 +3648,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                     <p className="text-zinc-500 text-sm">Taxa de entrega</p>
                   </div>
                   <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-                    <span className="font-bold text-zinc-900">R$ {(parseFloat(n.delivery_fee) || 0).toFixed(2)}</span>
+                    <span className="font-bold text-zinc-900 tabular-nums">R$ {(parseFloat(String(n.delivery_fee)) || 0).toFixed(2)}</span>
                     <button 
                       onClick={async () => {
                         if (confirm('Deletar bairro?')) {
@@ -3191,7 +3656,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                           apiFetch('/neighborhoods').then(res => res.json()).then(setNeighborhoods);
                         }
                       }}
-                      className="p-2 text-zinc-400 hover:text-red-500"
+                      className="p-2 text-zinc-400 hover:text-red-500 cursor-pointer"
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>
@@ -3199,38 +3664,96 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                 </div>
               ))}
             </div>
+            )}
           </div>
         )}
 
         {activeTab === 'categories' && (
           <div className="bg-white text-zinc-900 rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
             <div className="p-4 sm:p-6 border-b border-zinc-100 flex flex-wrap justify-between items-center gap-3">
-              <h2 className="font-bold text-lg text-zinc-900">Categorias</h2>
+              <div>
+                <h2 className="font-bold text-lg text-zinc-900">Categorias do Cardápio</h2>
+                <p className="text-xs text-zinc-500">Organize seus produtos em seções como Lanches, Pizzas, Bebidas e Sobremesas</p>
+              </div>
               <button 
-                onClick={() => setIsCategoryModalOpen(true)}
-                className="text-orange-500 font-bold text-sm"
+                type="button"
+                onClick={() => {
+                  setEditingCategory(null);
+                  setCategoryData({ name: '' });
+                  setCategoryFormError('');
+                  setIsCategoryModalOpen(true);
+                }}
+                className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                + Nova Categoria
+                <Plus className="w-4 h-4" /> Nova Categoria
               </button>
             </div>
+            {categories.length === 0 ? (
+              <div className="p-10 text-center space-y-3">
+                <LayoutDashboard className="w-10 h-10 text-zinc-300 mx-auto" />
+                <p className="font-bold text-zinc-900">Nenhuma categoria cadastrada</p>
+                <p className="text-sm text-zinc-500 max-w-md mx-auto">
+                  Crie categorias para agrupar os itens do seu cardápio e facilitar a escolha dos clientes.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingCategory(null);
+                    setCategoryData({ name: '' });
+                    setCategoryFormError('');
+                    setIsCategoryModalOpen(true);
+                  }}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" /> Criar Primeira Categoria
+                </button>
+              </div>
+            ) : (
             <div className="divide-y divide-zinc-100">
-              {categories.map(c => (
+              {categories.map(c => {
+                const countInCat = products.filter(p => p.category_id === c.id).length;
+                return (
                 <div key={c.id} className="p-4 sm:p-6 flex justify-between items-center gap-3 hover:bg-zinc-50 transition-colors">
-                  <span className="font-bold text-zinc-900">{c.name}</span>
-                  <button 
-                    onClick={async () => {
-                      if (confirm('Deletar categoria?')) {
-                        await apiFetch(`/categories/${c.id}`, { method: 'DELETE' });
-                        apiFetch('/categories').then(res => res.json()).then(setCategories);
-                      }
-                    }}
-                    className="p-2 text-zinc-400 hover:text-red-500"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
+                  <div className="min-w-0">
+                    <span className="font-bold text-zinc-900 block truncate">{c.name}</span>
+                    <span className="text-xs text-zinc-500 tabular-nums">
+                      {countInCat} {countInCat === 1 ? 'produto' : 'produtos'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCategory(c);
+                        setCategoryData({ name: c.name });
+                        setCategoryFormError('');
+                        setIsCategoryModalOpen(true);
+                      }}
+                      className="p-2 text-zinc-400 hover:text-blue-600 transition-colors cursor-pointer"
+                      title="Renomear categoria"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={async () => {
+                        if (confirm(`Deletar a categoria "${c.name}"? Os produtos dela continuarão salvos.`)) {
+                          await apiFetch(`/categories/${c.id}`, { method: 'DELETE' });
+                          apiFetch('/categories').then(res => res.json()).then(setCategories);
+                          apiFetch('/products').then(res => res.json()).then(setProducts);
+                        }
+                      }}
+                      className="p-2 text-zinc-400 hover:text-red-500 transition-colors cursor-pointer"
+                      title="Excluir categoria"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
+            )}
           </div>
         )}
 
@@ -3641,7 +4164,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                                   href={`https://wa.me/${waNumber}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="flex-1 min-w-[110px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+                                  className="flex-1 min-w-0 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
                                 >
                                   <MessageCircle className="w-3.5 h-3.5 shrink-0" /> WhatsApp
                                 </a>
@@ -3649,7 +4172,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                               <button
                                 type="button"
                                 onClick={() => setSelectedCustomer(c)}
-                                className="flex-1 min-w-[110px] bg-zinc-100 hover:bg-zinc-200 text-zinc-800 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+                                className="flex-1 min-w-0 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
                               >
                                 <Eye className="w-3.5 h-3.5 shrink-0" /> Histórico
                               </button>
@@ -3882,7 +4405,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                           </div>
                         </div>
                       </div>
-                      <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                      <div className="grid grid-cols-[1fr_auto_1fr] sm:flex gap-2">
                         <button
                           type="button"
                           onClick={() => {
@@ -3899,7 +4422,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                             setCounterItems({});
                             setIsCounterOrderModalOpen(true);
                           }}
-                          className="flex-1 min-w-[100px] bg-white border border-zinc-300 text-zinc-800 px-3 py-2.5 rounded-xl text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer whitespace-nowrap"
+                          className="sm:flex-1 min-w-0 bg-white border border-zinc-300 text-zinc-800 px-2.5 sm:px-3 py-2.5 rounded-xl text-[11px] sm:text-xs font-bold hover:bg-zinc-100 transition-colors cursor-pointer text-center truncate"
                         >
                           + Pedido
                         </button>
@@ -3930,7 +4453,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                             apiFetch('/commands').then(res => res.json()).then(setCommands);
                             apiFetch('/orders').then(res => res.json()).then(setOrders);
                           }}
-                          className="flex-1 min-w-[110px] bg-zinc-900 text-white px-3 py-2.5 rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors cursor-pointer whitespace-nowrap"
+                          className="sm:flex-1 min-w-0 bg-zinc-900 text-white px-2.5 sm:px-3 py-2.5 rounded-xl text-[11px] sm:text-xs font-bold hover:bg-zinc-800 transition-colors cursor-pointer text-center truncate"
                         >
                           Fechar Conta
                         </button>
@@ -4383,21 +4906,21 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                           placeholder={`cardapio-${slug}`}
                         />
                       </div>
-                      <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                      <div className="grid grid-cols-1 sm:flex gap-2 w-full sm:w-auto">
                         <button
                           type="button"
                           onClick={handleConnectEvolution}
                           disabled={evoLoading}
-                          className="flex-1 sm:flex-none justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2 disabled:opacity-50 transition-colors"
+                          className="w-full sm:w-auto justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-normal sm:tracking-wider flex items-center gap-2 disabled:opacity-50 transition-colors text-center"
                         >
                           <QrCode className="w-4 h-4 shrink-0" />
-                          {evoLoading ? 'Processando...' : evolutionStatus?.connected ? 'Reconectar / Status' : 'Criar / Gerar QR Code'}
+                          <span>{evoLoading ? 'Processando...' : evolutionStatus?.connected ? 'Reconectar / Status' : 'Criar / Gerar QR Code'}</span>
                         </button>
                         <button
                           type="button"
                           onClick={fetchEvolutionStatus}
                           disabled={evoLoading}
-                          className="flex-1 sm:flex-none justify-center bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-700 px-3 py-3 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors"
+                          className="w-full sm:w-auto justify-center bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-700 px-3 py-3 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors"
                         >
                           <RefreshCw className="w-4 h-4 shrink-0" /> Atualizar
                         </button>
@@ -4445,20 +4968,20 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                     )}
 
                     {evolutionStatus?.connected && (
-                      <div className="flex flex-wrap gap-2 pt-2">
+                      <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2 pt-2">
                         <button
                           type="button"
                           onClick={handleTestEvolution}
                           disabled={evoLoading}
-                          className="bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-colors"
+                          className="w-full sm:w-auto justify-center bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-colors"
                         >
-                          <MessageCircle className="w-4 h-4" /> Testar Envio WhatsApp
+                          <MessageCircle className="w-4 h-4 shrink-0" /> Testar Envio WhatsApp
                         </button>
                         <button
                           type="button"
                           onClick={handleDisconnectEvolution}
                           disabled={evoLoading}
-                          className="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2.5 rounded-xl font-bold text-xs transition-colors"
+                          className="w-full sm:w-auto justify-center bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2.5 rounded-xl font-bold text-xs transition-colors text-center"
                         >
                           Desconectar Instância
                         </button>
@@ -4552,8 +5075,8 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
               </section>
 
               <section>
-                <h3 className="text-lg font-bold text-zinc-900 mb-2">4. Gestão de Estoque</h3>
-                <p>No painel de "Produtos", você pode desativar um item que acabou. Ele continuará aparecendo no cardápio, mas com uma tarja de "Esgotado" e o botão de compra desabilitado.</p>
+                <h3 className="text-lg font-bold text-zinc-900 mb-2">4. Gestão de Disponibilidade</h3>
+                <p>No painel de "Produtos", basta tocar no interruptor Disponível/Indisponível para pausar um item que acabou. Ele continuará aparecendo no cardápio, mas com o aviso de "Indisponível" e sem permitir compra.</p>
               </section>
 
               <section>
@@ -4568,7 +5091,11 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
               <motion.div 
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                onClick={() => setIsCategoryModalOpen(false)}
+                onClick={() => {
+                  setIsCategoryModalOpen(false);
+                  setEditingCategory(null);
+                  setCategoryFormError('');
+                }}
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               />
               <motion.div 
@@ -4576,15 +5103,42 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                 className="relative bg-white text-zinc-900 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
               >
                 <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
-                  <h2 className="text-xl font-bold text-zinc-900">Nova Categoria</h2>
-                  <button onClick={() => setIsCategoryModalOpen(false)} className="p-2 hover:bg-zinc-100 rounded-full"><X className="w-6 h-6" /></button>
+                  <h2 className="text-xl font-bold text-zinc-900">
+                    {editingCategory ? 'Renomear Categoria' : 'Nova Categoria'}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCategoryModalOpen(false);
+                      setEditingCategory(null);
+                      setCategoryFormError('');
+                    }}
+                    className="p-2 hover:bg-zinc-100 rounded-full cursor-pointer"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
                 </div>
                 <form onSubmit={handleCategorySubmit} className="p-6 space-y-4">
+                  {categoryFormError && (
+                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{categoryFormError}</span>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-bold text-zinc-700 mb-1">Nome da Categoria</label>
-                    <input required value={categoryData.name} onChange={e => setCategoryData({...categoryData, name: e.target.value})} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+                    <input
+                      required
+                      autoFocus
+                      placeholder="Ex: Lanches, Pizzas, Bebidas, Sobremesas"
+                      value={categoryData.name}
+                      onChange={e => setCategoryData({...categoryData, name: e.target.value})}
+                      className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500"
+                    />
                   </div>
-                  <button type="submit" className="w-full bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition-all">Adicionar Categoria</button>
+                  <button type="submit" className="w-full bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition-all cursor-pointer">
+                    {editingCategory ? 'Salvar Alteração' : 'Adicionar Categoria'}
+                  </button>
                 </form>
               </motion.div>
             </div>
@@ -4602,30 +5156,89 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
               >
                 <div className="p-5 sm:p-6 border-b border-zinc-100 flex justify-between items-center sticky top-0 bg-white z-10">
                   <h2 className="text-xl font-bold text-zinc-900">{editingProduct ? 'Editar Produto' : 'Novo Produto'}</h2>
-                  <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-zinc-100 rounded-full"><X className="w-6 h-6" /></button>
+                  <button type="button" onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-zinc-100 rounded-full cursor-pointer"><X className="w-6 h-6" /></button>
                 </div>
                 <form onSubmit={handleProductSubmit} className="p-5 sm:p-6 space-y-4">
+                  {productFormError && (
+                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{productFormError}</span>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="sm:col-span-2">
-                      <label className="block text-sm font-bold text-zinc-700 mb-1">Nome</label>
-                      <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+                      <label className="block text-sm font-bold text-zinc-700 mb-1">Nome *</label>
+                      <input required placeholder="Ex: X-Burger Especial" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
                     </div>
                     <div className="sm:col-span-2">
-                      <label className="block text-sm font-bold text-zinc-700 mb-1">Descrição</label>
-                      <textarea required value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 h-24" />
+                      <label className="block text-sm font-bold text-zinc-700 mb-1">Descrição (opcional)</label>
+                      <textarea placeholder="Ex: Pão brioche, hambúrguer 180g, cheddar e molho da casa" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 h-20" />
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-zinc-700 mb-1">Preço (R$)</label>
-                      <input required type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
+                      <label className="block text-sm font-bold text-zinc-700 mb-1">Preço (R$) *</label>
+                      <input required type="number" step="0.01" min="0" placeholder="29.90" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" />
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-zinc-700 mb-1">Categoria</label>
-                      <select required value={formData.category_id} onChange={e => setFormData({...formData, category_id: e.target.value})} className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500">
-                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <label className="block text-sm font-bold text-zinc-700">Categoria</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowInlineCategoryInput(prev => !prev)}
+                          className="text-xs font-bold text-orange-600 hover:underline cursor-pointer"
+                        >
+                          {showInlineCategoryInput ? 'Fechar' : '+ Nova categoria'}
+                        </button>
+                      </div>
+                      {categories.length > 0 ? (
+                        <select
+                          value={formData.category_id}
+                          onChange={e => setFormData({...formData, category_id: e.target.value})}
+                          className="w-full bg-zinc-50 text-zinc-900 border border-zinc-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500"
+                        >
+                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      ) : (
+                        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                          Nenhuma categoria ainda. Crie abaixo em 1 clique!
+                        </div>
+                      )}
                     </div>
+
+                    {(showInlineCategoryInput || categories.length === 0) && (
+                      <div className="sm:col-span-2 p-3.5 rounded-2xl bg-orange-50/80 border border-orange-200 space-y-2">
+                        <p className="text-xs font-bold text-orange-900">
+                          {categories.length === 0
+                            ? 'Crie sua primeira categoria agora (já será selecionada automaticamente):'
+                            : 'Criar nova categoria sem sair daqui:'}
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={inlineCategoryName}
+                            onChange={e => setInlineCategoryName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleInlineCreateCategory();
+                              }
+                            }}
+                            placeholder="Ex: Lanches, Pizzas, Bebidas..."
+                            className="flex-1 bg-white text-zinc-900 border border-orange-200 px-3 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-orange-500"
+                          />
+                          <button
+                            type="button"
+                            disabled={inlineCategoryLoading}
+                            onClick={handleInlineCreateCategory}
+                            className="px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold shrink-0 disabled:opacity-50 transition-colors cursor-pointer"
+                          >
+                            {inlineCategoryLoading ? 'Criando...' : 'Criar'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="sm:col-span-2">
-                      <label className="block text-sm font-bold text-zinc-700 mb-1">Imagem do Produto</label>
+                      <label className="block text-sm font-bold text-zinc-700 mb-1">Imagem do Produto (opcional)</label>
                       <div className="flex gap-2">
                         <input 
                           type="file" 
@@ -4634,7 +5247,7 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                             const file = e.target.files?.[0];
                             if (file) {
                               if (file.size > 5 * 1024 * 1024) {
-                                alert('Imagem muito grande. Máximo 5MB');
+                                setProductFormError('Imagem muito grande. Máximo 5MB.');
                                 return;
                               }
                               const formDataUpload = new FormData();
@@ -4646,10 +5259,10 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                                 });
                                 const data = await res.json();
                                 if (data.image_url) {
-                                  setFormData({...formData, image_url: data.image_url});
+                                  setFormData(prev => ({...prev, image_url: data.image_url}));
                                 }
-                              } catch (err) {
-                                alert('Erro ao fazer upload da imagem');
+                              } catch {
+                                setProductFormError('Erro ao fazer upload da imagem.');
                               }
                             }
                           }}
@@ -4659,12 +5272,18 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
                       {formData.image_url && (
                         <div className="mt-2">
                           <img src={formData.image_url} alt="Preview" className="w-20 h-20 object-cover rounded-xl" />
-                          <button type="button" onClick={() => setFormData({...formData, image_url: ''})} className="text-xs text-red-500 mt-1">Remover imagem</button>
+                          <button type="button" onClick={() => setFormData({...formData, image_url: ''})} className="text-xs text-red-500 mt-1 cursor-pointer">Remover imagem</button>
                         </div>
                       )}
                     </div>
                   </div>
-                  <button type="submit" className="w-full bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition-all">Salvar Produto</button>
+                  <button
+                    type="submit"
+                    disabled={productSubmitting}
+                    className="w-full bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {productSubmitting ? 'Salvando...' : editingProduct ? 'Salvar Alterações' : 'Salvar Produto'}
+                  </button>
                 </form>
               </motion.div>
             </div>
@@ -5785,7 +6404,7 @@ const SuperAdmin = () => {
             <span className="font-black uppercase tracking-tighter text-xl">SuperAdmin</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
             {[
               { id: 'overview', label: 'Clientes' },
               { id: 'payments', label: 'Pagamentos' },
@@ -5796,7 +6415,7 @@ const SuperAdmin = () => {
                 key={tab.id}
                 onClick={() => setSuperTab(tab.id as any)}
                 className={cn(
-                  "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
+                  "px-3 sm:px-4 py-2 rounded-xl text-[11px] sm:text-xs font-black uppercase tracking-normal sm:tracking-widest transition-all",
                   superTab === tab.id
                     ? "bg-brand-accent text-brand-bg"
                     : "bg-zinc-900 text-zinc-400 hover:text-white"
@@ -5809,7 +6428,7 @@ const SuperAdmin = () => {
 
           <button 
             onClick={() => { setIsSuperLoggedIn(false); }}
-            className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest text-red-500 hover:bg-red-500/10 transition-all"
+            className="px-3 sm:px-4 py-2 rounded-xl text-[11px] sm:text-xs font-black uppercase tracking-normal sm:tracking-widest text-red-500 hover:bg-red-500/10 transition-all"
           >
             Sair
           </button>

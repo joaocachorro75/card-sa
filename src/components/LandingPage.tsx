@@ -400,12 +400,12 @@ export const LandingPage: React.FC = () => {
     <div className="min-h-screen bg-[#09090B] text-zinc-100 flex flex-col selection:bg-orange-500 selection:text-zinc-950 scroll-smooth">
       {/* Top Bar — 3 Zonas Limpas */}
       <header className="sticky top-0 z-50 border-b border-zinc-800/80 bg-[#09090B]/92 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 h-16 sm:h-20 flex items-center justify-between gap-2 sm:gap-6">
-          <a href="#" className="flex items-center gap-2.5 min-w-0 shrink-0">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 sm:h-20 flex items-center justify-between gap-2 sm:gap-6">
+          <a href="#" className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
             <div className="bg-orange-500 p-1.5 sm:p-2 rounded-xl shrink-0">
               <ChefHat className="text-zinc-950 w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <span className="font-display font-bold text-base sm:text-xl tracking-tight text-white truncate">
+            <span className="font-display font-bold text-sm sm:text-xl tracking-tight text-white truncate">
               MaisQueCardapio
             </span>
           </a>
@@ -428,7 +428,7 @@ export const LandingPage: React.FC = () => {
             </Link>
           </nav>
 
-          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -442,9 +442,10 @@ export const LandingPage: React.FC = () => {
             <button
               type="button"
               onClick={() => handleSelectPlan('free')}
-              className="bg-orange-500 text-zinc-950 px-3.5 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold hover:bg-orange-400 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="bg-orange-500 text-zinc-950 px-2.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold hover:bg-orange-400 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              Criar Cardápio Grátis
+              <span className="sm:hidden">Criar Grátis</span>
+              <span className="hidden sm:inline">Criar Cardápio Grátis</span>
             </button>
           </div>
         </div>
@@ -514,13 +515,13 @@ export const LandingPage: React.FC = () => {
             <div className="lg:col-span-6">
               <div className="rounded-2xl border border-zinc-800 bg-[#111114] overflow-hidden shadow-2xl">
                 {/* Preview Mode Switcher */}
-                <div className="px-3 sm:px-4 py-3 border-b border-zinc-800 bg-[#16161B] flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800 w-full sm:w-auto">
+                <div className="px-2.5 sm:px-4 py-2.5 sm:py-3 border-b border-zinc-800 bg-[#16161B] flex flex-wrap items-center justify-between gap-2">
+                  <div className="grid grid-cols-3 sm:inline-flex items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800 w-full sm:w-auto">
                     <button
                       type="button"
                       onClick={() => setHeroTab('menu')}
                       className={cn(
-                        'flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap',
+                        'px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold text-center transition-colors cursor-pointer truncate',
                         heroTab === 'menu' ? 'bg-orange-500 text-zinc-950' : 'text-zinc-400 hover:text-white'
                       )}
                     >
@@ -530,21 +531,23 @@ export const LandingPage: React.FC = () => {
                       type="button"
                       onClick={() => setHeroTab('table')}
                       className={cn(
-                        'flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap',
+                        'px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold text-center transition-colors cursor-pointer truncate',
                         heroTab === 'table' ? 'bg-orange-500 text-zinc-950' : 'text-zinc-400 hover:text-white'
                       )}
                     >
-                      Mesa & Comanda
+                      <span className="sm:hidden">Mesa QR</span>
+                      <span className="hidden sm:inline">Mesa &amp; Comanda</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setHeroTab('admin')}
                       className={cn(
-                        'flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap',
+                        'px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold text-center transition-colors cursor-pointer truncate',
                         heroTab === 'admin' ? 'bg-orange-500 text-zinc-950' : 'text-zinc-400 hover:text-white'
                       )}
                     >
-                      Painel & WhatsApp
+                      <span className="sm:hidden">Painel</span>
+                      <span className="hidden sm:inline">Painel &amp; WhatsApp</span>
                     </button>
                   </div>
                   <span className="hidden sm:inline font-mono text-[11px] text-zinc-500">
@@ -575,36 +578,36 @@ export const LandingPage: React.FC = () => {
 
                     <div className="p-4 space-y-3">
                       {/* Delivery vs Pickup + Payment */}
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="inline-flex bg-zinc-200/80 p-1 rounded-lg text-xs font-semibold">
+                      <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center justify-between gap-2">
+                        <div className="grid grid-cols-2 sm:inline-flex bg-zinc-200/80 p-1 rounded-lg text-xs font-semibold">
                           <button
                             type="button"
                             onClick={() => setPreviewOrderMode('delivery')}
                             className={cn(
-                              'px-2.5 py-1 rounded-md flex items-center gap-1 transition-colors cursor-pointer',
+                              'px-2.5 py-1.5 sm:py-1 rounded-md flex items-center justify-center gap-1 transition-colors cursor-pointer',
                               previewOrderMode === 'delivery' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-600'
                             )}
                           >
-                            <Bike className="w-3.5 h-3.5 text-orange-600" /> Delivery
+                            <Bike className="w-3.5 h-3.5 text-orange-600 shrink-0" /> Delivery
                           </button>
                           <button
                             type="button"
                             onClick={() => setPreviewOrderMode('pickup')}
                             className={cn(
-                              'px-2.5 py-1 rounded-md flex items-center gap-1 transition-colors cursor-pointer',
+                              'px-2.5 py-1.5 sm:py-1 rounded-md flex items-center justify-center gap-1 transition-colors cursor-pointer',
                               previewOrderMode === 'pickup' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-600'
                             )}
                           >
-                            <Store className="w-3.5 h-3.5 text-orange-600" /> Balcão
+                            <Store className="w-3.5 h-3.5 text-orange-600 shrink-0" /> Balcão
                           </button>
                         </div>
 
-                        <div className="inline-flex bg-zinc-200/80 p-1 rounded-lg text-xs font-semibold">
+                        <div className="grid grid-cols-2 sm:inline-flex bg-zinc-200/80 p-1 rounded-lg text-xs font-semibold">
                           <button
                             type="button"
                             onClick={() => setPreviewPayment('pix')}
                             className={cn(
-                              'px-2.5 py-1 rounded-md transition-colors cursor-pointer',
+                              'px-2.5 py-1.5 sm:py-1 rounded-md text-center transition-colors cursor-pointer',
                               previewPayment === 'pix' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-600'
                             )}
                           >
@@ -614,7 +617,7 @@ export const LandingPage: React.FC = () => {
                             type="button"
                             onClick={() => setPreviewPayment('infinitepay')}
                             className={cn(
-                              'px-2.5 py-1 rounded-md transition-colors cursor-pointer',
+                              'px-2.5 py-1.5 sm:py-1 rounded-md text-center transition-colors cursor-pointer',
                               previewPayment === 'infinitepay' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-600'
                             )}
                           >
@@ -681,22 +684,22 @@ export const LandingPage: React.FC = () => {
                       </div>
 
                       {/* Live Checkout Bar */}
-                      <div className="bg-zinc-950 text-white rounded-xl p-3.5 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
+                      <div className="bg-zinc-950 text-white rounded-xl p-3 sm:p-3.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 sm:gap-3">
+                        <div className="min-w-0 flex-1">
                           <p className="text-[11px] text-zinc-400 truncate">
-                            {previewOrderMode === 'delivery' ? 'Entrega Bairro Centro (R$ 6,00)' : 'Retirada sem taxa'} ·{' '}
-                            {previewPayment === 'pix' ? 'PIX da Loja' : 'Link InfinitePay'}
+                            {previewOrderMode === 'delivery' ? 'Entrega Centro (R$ 6,00)' : 'Retirada sem taxa'} ·{' '}
+                            {previewPayment === 'pix' ? 'PIX da Loja' : 'InfinitePay'}
                           </p>
-                          <p className="text-base font-extrabold tabular-nums text-white">
+                          <p className="text-sm sm:text-base font-extrabold tabular-nums text-white">
                             Total R$ {formatBRLFull(previewTotal)}
-                            <span className="text-xs font-medium text-zinc-400 ml-2">
+                            <span className="text-[11px] sm:text-xs font-medium text-zinc-400 ml-1.5">
                               ({previewItemCount} {previewItemCount === 1 ? 'item' : 'itens'})
                             </span>
                           </p>
                         </div>
                         <Link
                           to="/e/demo"
-                          className="bg-orange-500 hover:bg-orange-400 text-zinc-950 px-3.5 py-2 rounded-lg text-xs font-bold shrink-0 transition-colors"
+                          className="w-full sm:w-auto text-center bg-orange-500 hover:bg-orange-400 text-zinc-950 px-3.5 py-2 rounded-lg text-xs font-bold shrink-0 transition-colors"
                         >
                           Abrir Demo
                         </Link>
@@ -897,7 +900,7 @@ export const LandingPage: React.FC = () => {
                   <p className="text-sm font-semibold text-zinc-300 mb-3">
                     Taxa média paga nos aplicativos de entrega
                   </p>
-                  <div className="grid grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
                     {[
                       { rate: 12, label: '12% (Plano Básico)' },
                       { rate: 23, label: '23% (Entrega Parceira)' },
@@ -908,14 +911,14 @@ export const LandingPage: React.FC = () => {
                         type="button"
                         onClick={() => setCommissionRate(opt.rate)}
                         className={cn(
-                          'p-3 rounded-xl border text-left transition-colors cursor-pointer',
+                          'p-2.5 sm:p-3 rounded-xl border text-left transition-colors cursor-pointer min-w-0',
                           commissionRate === opt.rate
                             ? 'bg-orange-500/15 border-orange-500 text-white'
                             : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                         )}
                       >
-                        <p className="font-display font-bold text-lg tabular-nums">{opt.rate}%</p>
-                        <p className="text-[11px] text-zinc-400 mt-0.5 leading-tight">{opt.label.split(' ')[1]} {opt.label.split(' ')[2] || ''}</p>
+                        <p className="font-display font-bold text-base sm:text-lg tabular-nums">{opt.rate}%</p>
+                        <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-0.5 leading-tight break-words">{opt.label.split(' ')[1]} {opt.label.split(' ')[2] || ''}</p>
                       </button>
                     ))}
                   </div>
@@ -957,9 +960,9 @@ export const LandingPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleSelectPlan('free')}
-                  className="w-full py-3.5 px-5 rounded-xl bg-orange-500 hover:bg-orange-400 text-zinc-950 font-bold text-sm sm:text-base transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-3.5 px-4 sm:px-5 rounded-xl bg-orange-500 hover:bg-orange-400 text-zinc-950 font-bold text-xs sm:text-base transition-colors flex items-center justify-center gap-2 text-center cursor-pointer"
                 >
-                  Parar de pagar comissão — Criar minha loja
+                  <span>Parar de pagar comissão — Criar minha loja</span>
                   <ArrowRight className="w-4 h-4 shrink-0" />
                 </button>
               </div>
@@ -1029,8 +1032,8 @@ export const LandingPage: React.FC = () => {
                     alt="Mesa de restaurante com atendimento digital via QR Code"
                     className="w-full aspect-[4/3] object-cover"
                   />
-                  <div className="p-4 sm:p-5 border-t border-zinc-800 flex items-center justify-between gap-4">
-                    <div>
+                  <div className="p-4 sm:p-5 border-t border-zinc-800 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3">
+                    <div className="min-w-0">
                       <p className="text-sm font-bold text-white">Salão sem espera</p>
                       <p className="text-xs text-zinc-400">QR Code individual por mesa, comanda aberta e pedido de conta.</p>
                     </div>

@@ -372,6 +372,12 @@ export function createMockPool() {
       store.categories.push({ id, establishment_id: Number(params[0]), name: params[1] });
       return [{ insertId: id, affectedRows: 1 }, []];
     }
+    if (upper.startsWith("UPDATE CATEGORIES")) {
+      const [name, id, estId] = params;
+      const cat = store.categories.find((c) => String(c.id) === String(id) && String(c.establishment_id) === String(estId));
+      if (cat) cat.name = String(name);
+      return [{ affectedRows: cat ? 1 : 0 }, []];
+    }
     if (upper.startsWith("DELETE FROM CATEGORIES")) {
       if (params.length === 2) {
         store.categories = store.categories.filter((c) => !(String(c.id) === String(params[0]) && String(c.establishment_id) === String(params[1])));
@@ -382,6 +388,10 @@ export function createMockPool() {
     }
 
     // --- PRODUCTS ---
+    if (upper.includes("COUNT(*) AS COUNT FROM PRODUCTS")) {
+      const count = store.products.filter((p) => String(p.establishment_id) === String(params[0])).length;
+      return [[{ count }], []];
+    }
     if (upper.startsWith("SELECT * FROM PRODUCTS")) {
       return [store.products.filter((p) => String(p.establishment_id) === String(params[0])), []];
     }
@@ -400,11 +410,20 @@ export function createMockPool() {
       });
       return [{ insertId: id, affectedRows: 1 }, []];
     }
+    if (upper.startsWith("UPDATE PRODUCTS SET CATEGORY_ID = NULL")) {
+      const [catId, estId] = params;
+      for (const p of store.products) {
+        if (String(p.category_id) === String(catId) && String(p.establishment_id) === String(estId)) {
+          p.category_id = null;
+        }
+      }
+      return [{ affectedRows: 1 }, []];
+    }
     if (upper.startsWith("UPDATE PRODUCTS")) {
       const [category_id, name, description, price, image_url, is_available, id, estId] = params;
       const prod = store.products.find((p) => String(p.id) === String(id) && String(p.establishment_id) === String(estId));
       if (prod) {
-        Object.assign(prod, { category_id: Number(category_id), name, description, price: Number(price), image_url, is_available: is_available ? 1 : 0 });
+        Object.assign(prod, { category_id: category_id ? Number(category_id) : null, name, description, price: Number(price), image_url, is_available: is_available ? 1 : 0 });
       }
       return [{ affectedRows: prod ? 1 : 0 }, []];
     }

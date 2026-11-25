@@ -12,7 +12,95 @@ import { createMockPool } from "./mockPool.ts";
 
 dotenv.config();
 
-const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
+const normalizeBaseUrl = (raw?: string | null): string => {
+  if (!raw || typeof raw !== 'string') return '';
+  const trimmed = raw.trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return '';
+  }
+};
+
+const isLocalHostUrl = (url: string): boolean => {
+  if (!url) return true;
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '::1' ||
+      hostname.endsWith('.local')
+    );
+  } catch {
+    return true;
+  }
+};
+
+const CONFIGURED_BASE_URL = normalizeBaseUrl(
+  process.env.BASE_URL || process.env.APP_URL || process.env.PUBLIC_URL
+);
+let lastObservedPublicBaseUrl =
+  CONFIGURED_BASE_URL && !isLocalHostUrl(CONFIGURED_BASE_URL) ? CONFIGURED_BASE_URL : '';
+
+function extractRequestBaseUrl(req?: any): string {
+  if (!req) return '';
+
+  // 1. Prefer reverse-proxy headers (EasyPanel / Traefik / Nginx / Cloud Run)
+  const rawForwardedHost = String(req.headers?.['x-forwarded-host'] || '').split(',')[0].trim();
+  const rawHost = rawForwardedHost || String(req.headers?.host || req.get?.('host') || '').split(',')[0].trim();
+  const rawProtoHeader = String(req.headers?.['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+
+  // Strict hostname[:port] validation to prevent host header injection
+  const safeHost = /^[a-zA-Z0-9.-]+(:\d{1,5})?$/.test(rawHost) ? rawHost : '';
+  if (safeHost) {
+    const proto =
+      rawProtoHeader === 'https' || rawProtoHeader === 'http'
+        ? rawProtoHeader
+        : req.secure
+          ? 'https'
+          : isLocalHostUrl(`http://${safeHost}`)
+            ? 'http'
+            : 'https';
+    const candidate = normalizeBaseUrl(`${proto}://${safeHost}`);
+    if (candidate) {
+      if (!isLocalHostUrl(candidate)) {
+        lastObservedPublicBaseUrl = candidate;
+      }
+      return candidate;
+    }
+  }
+
+  // 2. Fallback to browser Origin / Referer header
+  const originCandidate = normalizeBaseUrl(req.headers?.origin || req.headers?.referer);
+  if (originCandidate) {
+    if (!isLocalHostUrl(originCandidate)) {
+      lastObservedPublicBaseUrl = originCandidate;
+    }
+    return originCandidate;
+  }
+
+  return '';
+}
+
+function getPublicBaseUrl(req?: any): string {
+  if (CONFIGURED_BASE_URL && !isLocalHostUrl(CONFIGURED_BASE_URL)) {
+    return CONFIGURED_BASE_URL;
+  }
+  const fromReq = extractRequestBaseUrl(req);
+  if (fromReq && !isLocalHostUrl(fromReq)) {
+    return fromReq;
+  }
+  if (lastObservedPublicBaseUrl) {
+    return lastObservedPublicBaseUrl;
+  }
+  return fromReq || CONFIGURED_BASE_URL || "http://localhost:3000";
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Criar pasta de uploads se não existir
@@ -549,7 +637,12 @@ async function initDatabase() {
 await initDatabase();
 
 const app = express();
+app.set("trust proxy", true);
 app.use(express.json());
+app.use((req, _res, next) => {
+  extractRequestBaseUrl(req);
+  next();
+});
 
 // JWT Configuration
 const JWT_SECRET = process.env.JWT_SECRET || "superadmin-jwt-secret-change-in-production";
@@ -857,12 +950,24 @@ app.post("/api/public/register", async (req, res) => {
       await pool.execute("INSERT INTO settings (establishment_id, `key`, value) VALUES (?, ?, ?)", [id, k, v]);
     }
 
-    const welcomeMessage = `🎉 *Bem-vindo ao MaisQueCardapio!*\n\nSeu cardápio digital foi criado com sucesso!\n\n🌐 *URL:* ${BASE_URL}/e/${slug}\n📱 *WhatsApp:* ${normalizedWhatsapp}\n\nAcesse seu painel para configurar produtos, categorias e conectar seu WhatsApp via QR Code!`;
+    // Criar categorias iniciais para que o lojista já consiga cadastrar produtos imediatamente
+    for (const catName of ["Lanches", "Bebidas", "Porções"]) {
+      await pool.execute("INSERT INTO categories (establishment_id, name) VALUES (?, ?)", [estId, catName]);
+    }
+
+    // Criar bairro inicial padrão para delivery
+    await pool.execute(
+      "INSERT INTO neighborhoods (establishment_id, name, delivery_fee) VALUES (?, ?, ?)",
+      [estId, "Centro", 5.0]
+    );
+
+    const publicUrl = getPublicBaseUrl(req);
+    const welcomeMessage = `🎉 *Bem-vindo ao MaisQueCardapio!*\n\nSeu cardápio digital foi criado com sucesso!\n\n🌐 *Seu Cardápio:* ${publicUrl}/e/${slug}\n⚙️ *Painel Admin:* ${publicUrl}/e/${slug}/admin\n📱 *WhatsApp:* ${normalizedWhatsapp}\n\nAcesse seu painel para configurar produtos, categorias e conectar seu WhatsApp via QR Code!`;
     await sendWhatsAppMessage(normalizedWhatsapp, welcomeMessage, { useSuperAdmin: true });
 
     await notifySuperAdmin(
       'signup',
-      `🆕 *Nova Contratação / Cadastro*\n\n🏪 *Loja:* ${name}\n🔗 *Slug:* /e/${slug}\n📱 *WhatsApp:* ${normalizedWhatsapp}\n📋 *Plano:* Gratuito`
+      `🆕 *Nova Contratação / Cadastro*\n\n🏪 *Loja:* ${name}\n🌐 *Link:* ${publicUrl}/e/${slug}\n📱 *WhatsApp:* ${normalizedWhatsapp}\n📋 *Plano:* Gratuito`
     );
 
     res.json({ id: estId, slug, whatsapp: normalizedWhatsapp });
@@ -1099,7 +1204,23 @@ app.post("/api/superadmin/establishments", async (req, res) => {
       "INSERT INTO establishments (name, slug, owner_whatsapp, password, plan_id, status) VALUES (?, ?, ?, ?, ?, ?)",
       [name, slug, owner_whatsapp, password, plan_id || 1, status || 'active']
     );
-    res.json({ id: (result as any).insertId, success: true });
+    const estId = (result as any).insertId;
+    const defaultSettings = [
+      [estId, "store_name", name],
+      [estId, "whatsapp_kitchen", owner_whatsapp],
+      [estId, "whatsapp_cashier", owner_whatsapp],
+      [estId, "primary_color", "#f97316"],
+      [estId, "is_open", "1"],
+    ];
+    for (const [id, k, v] of defaultSettings) {
+      await pool.execute("INSERT INTO settings (establishment_id, `key`, value) VALUES (?, ?, ?)", [id, k, v]);
+    }
+    for (const catName of ["Lanches", "Bebidas", "Porções"]) {
+      await pool.execute("INSERT INTO categories (establishment_id, name) VALUES (?, ?)", [estId, catName]);
+    }
+    await pool.execute("INSERT INTO neighborhoods (establishment_id, name, delivery_fee) VALUES (?, ?, ?)", [estId, "Centro", 5.0]);
+
+    res.json({ id: estId, success: true });
   } catch (error) {
     console.error("Erro ao criar estabelecimento:", error);
     res.status(500).json({ error: "Erro ao criar estabelecimento" });
@@ -1168,14 +1289,54 @@ app.post("/api/e/upload/banner", upload.single('banner'), (req: any, res) => {
 });
 
 app.post("/api/e/categories", async (req: any, res) => {
-  const { name } = req.body;
-  const [result] = await pool.execute("INSERT INTO categories (establishment_id, name) VALUES (?, ?)", [req.establishment.id, name]);
-  res.json({ id: (result as any).insertId });
+  try {
+    const cleanName = String(req.body?.name || "").trim();
+    if (!cleanName) {
+      return res.status(400).json({ error: "Informe o nome da categoria." });
+    }
+    const [result] = await pool.execute(
+      "INSERT INTO categories (establishment_id, name) VALUES (?, ?)",
+      [req.establishment.id, cleanName]
+    );
+    res.json({ id: (result as any).insertId, name: cleanName });
+  } catch (error) {
+    console.error("Erro ao criar categoria:", error);
+    res.status(500).json({ error: "Erro ao criar categoria." });
+  }
+});
+
+app.put("/api/e/categories/:id", async (req: any, res) => {
+  try {
+    const cleanName = String(req.body?.name || "").trim();
+    if (!cleanName) {
+      return res.status(400).json({ error: "Informe o nome da categoria." });
+    }
+    await pool.execute(
+      "UPDATE categories SET name = ? WHERE id = ? AND establishment_id = ?",
+      [cleanName, req.params.id, req.establishment.id]
+    );
+    res.json({ success: true, id: Number(req.params.id), name: cleanName });
+  } catch (error) {
+    console.error("Erro ao atualizar categoria:", error);
+    res.status(500).json({ error: "Erro ao atualizar categoria." });
+  }
 });
 
 app.delete("/api/e/categories/:id", async (req: any, res) => {
-  await pool.execute("DELETE FROM categories WHERE id = ? AND establishment_id = ?", [req.params.id, req.establishment.id]);
-  res.json({ success: true });
+  try {
+    await pool.execute(
+      "UPDATE products SET category_id = NULL WHERE category_id = ? AND establishment_id = ?",
+      [req.params.id, req.establishment.id]
+    );
+    await pool.execute(
+      "DELETE FROM categories WHERE id = ? AND establishment_id = ?",
+      [req.params.id, req.establishment.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro ao deletar categoria:", error);
+    res.status(500).json({ error: "Erro ao remover categoria." });
+  }
 });
 
 app.get("/api/e/products", async (req: any, res) => {
@@ -1184,30 +1345,101 @@ app.get("/api/e/products", async (req: any, res) => {
 });
 
 app.post("/api/e/products", async (req: any, res) => {
-  const { category_id, name, description, price, image_url } = req.body;
-  const [result] = await pool.execute("INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)", [
-    req.establishment.id, 
-    category_id ?? null, 
-    name ?? null, 
-    description ?? null, 
-    price ?? null, 
-    image_url ?? null
-  ]);
-  res.json({ id: (result as any).insertId });
+  try {
+    const { category_id, name, description, price, image_url } = req.body;
+    const cleanName = String(name || "").trim();
+    const numericPrice = typeof price === "number" ? price : parseFloat(String(price ?? "").replace(",", "."));
+
+    if (!cleanName) {
+      return res.status(400).json({ error: "Informe o nome do produto." });
+    }
+    if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+      return res.status(400).json({ error: "Informe um preço válido para o produto." });
+    }
+
+    // Verificar limite de produtos do plano
+    const [planRows] = await pool.execute("SELECT max_products, name FROM plans WHERE id = ?", [req.establishment.plan_id || 1]);
+    const plan = (planRows as any[])[0];
+    if (plan && Number(plan.max_products) > 0) {
+      const [countRows] = await pool.execute(
+        "SELECT COUNT(*) as count FROM products WHERE establishment_id = ?",
+        [req.establishment.id]
+      );
+      const currentCount = Number((countRows as any[])[0]?.count || 0);
+      if (currentCount >= Number(plan.max_products)) {
+        return res.status(403).json({
+          error: `Seu plano ${plan.name} permite até ${plan.max_products} produtos. Faça upgrade para o Plano Premium na aba Assinatura para cadastrar mais itens.`
+        });
+      }
+    }
+
+    const parsedCategoryId = category_id !== undefined && category_id !== null && String(category_id).trim() !== ""
+      ? parseInt(String(category_id), 10)
+      : null;
+    const safeCategoryId = parsedCategoryId && Number.isFinite(parsedCategoryId) ? parsedCategoryId : null;
+
+    const [result] = await pool.execute(
+      "INSERT INTO products (establishment_id, category_id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?, ?)",
+      [
+        req.establishment.id,
+        safeCategoryId,
+        cleanName,
+        String(description || "").trim(),
+        numericPrice,
+        image_url ? String(image_url).trim() : ""
+      ]
+    );
+    res.json({ id: (result as any).insertId });
+  } catch (error) {
+    console.error("Erro ao criar produto:", error);
+    res.status(500).json({ error: "Erro ao salvar produto. Verifique os dados e tente novamente." });
+  }
 });
 
 app.put("/api/e/products/:id", async (req: any, res) => {
-  const { category_id, name, description, price, image_url, is_available } = req.body;
-  await pool.execute(
-    "UPDATE products SET category_id = ?, name = ?, description = ?, price = ?, image_url = ?, is_available = ? WHERE id = ? AND establishment_id = ?",
-    [category_id, name, description, price, image_url, is_available ? 1 : 0, req.params.id, req.establishment.id]
-  );
-  res.json({ success: true });
+  try {
+    const { category_id, name, description, price, image_url, is_available } = req.body;
+    const cleanName = String(name || "").trim();
+    const numericPrice = typeof price === "number" ? price : parseFloat(String(price ?? "").replace(",", "."));
+    if (!cleanName) {
+      return res.status(400).json({ error: "Informe o nome do produto." });
+    }
+    if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+      return res.status(400).json({ error: "Informe um preço válido para o produto." });
+    }
+    const parsedCategoryId = category_id !== undefined && category_id !== null && String(category_id).trim() !== ""
+      ? parseInt(String(category_id), 10)
+      : null;
+    const safeCategoryId = parsedCategoryId && Number.isFinite(parsedCategoryId) ? parsedCategoryId : null;
+
+    await pool.execute(
+      "UPDATE products SET category_id = ?, name = ?, description = ?, price = ?, image_url = ?, is_available = ? WHERE id = ? AND establishment_id = ?",
+      [
+        safeCategoryId,
+        cleanName,
+        String(description || "").trim(),
+        numericPrice,
+        image_url ? String(image_url).trim() : "",
+        is_available ? 1 : 0,
+        req.params.id,
+        req.establishment.id
+      ]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro ao atualizar produto:", error);
+    res.status(500).json({ error: "Erro ao atualizar produto." });
+  }
 });
 
 app.delete("/api/e/products/:id", async (req: any, res) => {
-  await pool.execute("DELETE FROM products WHERE id = ? AND establishment_id = ?", [req.params.id, req.establishment.id]);
-  res.json({ success: true });
+  try {
+    await pool.execute("DELETE FROM products WHERE id = ? AND establishment_id = ?", [req.params.id, req.establishment.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro ao deletar produto:", error);
+    res.status(500).json({ error: "Erro ao remover produto." });
+  }
 });
 
 app.get("/api/e/neighborhoods", async (req: any, res) => {
@@ -1559,8 +1791,9 @@ async function createOrderInfinitePayCheckout(
   const amount = parseFloat(String(order.total)) || 0;
   const priceInCents = Math.max(100, Math.round(amount * 100));
   const orderNsu = `ORDER-${order.id}`;
-  const redirectUrl = `${requestOrigin}/e/${establishment.slug}/pedido/${order.id}?infinitepay=returned`;
-  const webhookUrl = `${BASE_URL}/api/webhook/infinitepay`;
+  const resolvedOrigin = normalizeBaseUrl(requestOrigin) || getPublicBaseUrl();
+  const redirectUrl = `${resolvedOrigin}/e/${establishment.slug}/pedido/${order.id}?infinitepay=returned`;
+  const webhookUrl = `${resolvedOrigin}/api/webhook/infinitepay`;
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (es.infinitepay_api_key) {
@@ -1754,7 +1987,7 @@ app.post("/api/e/orders", async (req: any, res) => {
   let checkoutError: string | null = null;
   if (payment_method === 'infinitepay') {
     try {
-      const requestOrigin = req.headers.origin || BASE_URL;
+      const requestOrigin = getPublicBaseUrl(req);
       const ipCheckout = await createOrderInfinitePayCheckout(
         req.establishment,
         { id: orderId, total: total ?? 0 },
@@ -2143,7 +2376,7 @@ app.post("/api/public/orders/:id/infinitepay-checkout", async (req, res) => {
       return res.status(400).json({ error: "Este pedido já está pago." });
     }
 
-    const requestOrigin = req.headers.origin || BASE_URL;
+    const requestOrigin = getPublicBaseUrl(req);
     const ipCheckout = await createOrderInfinitePayCheckout(est, order, requestOrigin);
     res.json({ success: true, ...ipCheckout });
   } catch (error: any) {
@@ -2325,7 +2558,7 @@ app.put("/api/e/orders/:id/status", async (req: any, res) => {
     
     // Enviar notificação WhatsApp para o cliente
     if (order.customer_phone) {
-      const baseUrl = process.env.BASE_URL || 'https://automacao-maisquecardapio.nfeujb.easypanel.host';
+      const baseUrl = getPublicBaseUrl(req);
       const statusLabels: Record<string, string> = {
         'pendente': 'Pendente',
         'confirmado': 'Confirmado',
@@ -2735,7 +2968,8 @@ app.post('/api/sync/order', async (req, res) => {
     }
     
     // Enviar notificação WhatsApp para o cliente
-    const accessUrl = `${BASE_URL}/e/${slug}`;
+    const publicUrl = getPublicBaseUrl(req);
+    const accessUrl = `${publicUrl}/e/${slug}`;
     const planName = order.price && order.price >= 49 ? 'Premium' : 'Gratuito';
     
     const welcomeMessage = `🍽️ *Bem-vindo ao Mais Que Cardápio!*
@@ -2831,7 +3065,7 @@ app.post('/api/webhook/payment', async (req, res) => {
 ✅ Sistema de reservas
 ✅ Suporte prioritário
 
-🔗 Acesse: ${BASE_URL}/e/${est.slug}
+🔗 Acesse: ${getPublicBaseUrl(req)}/e/${est.slug}
 
 Obrigado pela confiança!
 
@@ -2926,7 +3160,7 @@ Para manter seus benefícios:
 ✅ Sistema de reservas
 
 💰 *Renove agora:* R$ 49,90/mês
-🔗 ${BASE_URL}/upgrade
+🔗 ${getPublicBaseUrl()}/e/${est.slug}/admin/assinatura
 
 Dúvidas? Responda esta mensagem!
 
@@ -2973,7 +3207,7 @@ Olá! Sua assinatura Premium expira em *3 dias*!
 ⚠️ Após a expiração, você voltará para o plano Gratuito (apenas 10 produtos).
 
 💰 *Renove agora:* R$ 49,90/mês
-🔗 ${BASE_URL}/upgrade
+🔗 ${getPublicBaseUrl()}/e/${est.slug}/admin/assinatura
 
 Não perca seus benefícios!
 
@@ -3014,7 +3248,7 @@ Seu plano foi alterado para **Gratuito**:
 
 Para recuperar seus benefícios:
 💰 *Renove:* R$ 49,90/mês
-🔗 ${BASE_URL}/e/${est.slug}/admin/assinatura`;
+🔗 ${getPublicBaseUrl()}/e/${est.slug}/admin/assinatura`;
       
       await sendWhatsAppMessage(est.owner_whatsapp, message, { useSuperAdmin: true });
       await notifySuperAdmin('renewal', `⚠️ *Assinatura Expirada*\n\n🍽️ ${est.name}\n📱 ${est.owner_whatsapp}\n\nRebaixado para Gratuito.`);
@@ -3057,7 +3291,7 @@ app.post('/api/e/renew', async (req: any, res) => {
     const [rows] = await pool.execute('SELECT * FROM establishments WHERE id = ?', [req.establishment.id]);
     const est = (rows as any[])[0];
     
-    const message = `✅ *Assinatura Renovada!*\n\n🍽️ *Mais Que Cardápio*\n\nSua assinatura foi renovada com sucesso!\n\n📋 *Plano:* Premium\n📅 *Válido até:* ${est.paid_until ? new Date(est.paid_until).toLocaleDateString('pt-BR') : 'N/A'}\n\n🔗 ${BASE_URL}/e/${est.slug}`;
+    const message = `✅ *Assinatura Renovada!*\n\n🍽️ *Mais Que Cardápio*\n\nSua assinatura foi renovada com sucesso!\n\n📋 *Plano:* Premium\n📅 *Válido até:* ${est.paid_until ? new Date(est.paid_until).toLocaleDateString('pt-BR') : 'N/A'}\n\n🔗 ${getPublicBaseUrl(req)}/e/${est.slug}`;
     
     await sendWhatsAppMessage(est.owner_whatsapp, message, { useSuperAdmin: true });
     await notifySuperAdmin('renewal', `✅ *Assinatura Renovada*\n\n🏪 ${est.name}\n📅 ${monthsToAdd} mês(es)`);
@@ -3280,9 +3514,9 @@ app.post('/api/e/subscription/infinitepay-checkout', async (req: any, res) => {
     const orderNsu = `SUB-${paymentId}`;
 
     const handle = ps.infinitepay_handle.replace(/^\$/, '').trim();
-    const requestOrigin = req.headers.origin || BASE_URL;
+    const requestOrigin = getPublicBaseUrl(req);
     const redirectUrl = `${requestOrigin}/e/${req.establishment.slug}/admin/assinatura?payment=${paymentId}&status=returned`;
-    const webhookUrl = `${BASE_URL}/api/webhook/infinitepay`;
+    const webhookUrl = `${requestOrigin}/api/webhook/infinitepay`;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (ps.infinitepay_api_key) {
@@ -3377,7 +3611,7 @@ app.post('/api/webhook/infinitepay', async (req, res) => {
 
         await sendWhatsAppMessage(
           payment.owner_whatsapp,
-          `✅ *Pagamento InfinitePay Confirmado!*\n\n🍽️ *${payment.establishment_name}*\n💰 Valor: R$ ${parseFloat(payment.amount).toFixed(2)}\n📋 Plano Premium ativado automaticamente!\n\n🔗 ${BASE_URL}/e/${payment.slug}`,
+          `✅ *Pagamento InfinitePay Confirmado!*\n\n🍽️ *${payment.establishment_name}*\n💰 Valor: R$ ${parseFloat(payment.amount).toFixed(2)}\n📋 Plano Premium ativado automaticamente!\n\n🔗 ${getPublicBaseUrl(req)}/e/${payment.slug}`,
           { useSuperAdmin: true }
         );
         await notifySuperAdmin(
@@ -3688,7 +3922,7 @@ app.post('/api/superadmin/payments/:id/confirm', async (req: any, res) => {
     `, [payment.establishment_id]);
     
     // Enviar WhatsApp para o cliente via instância do SuperAdmin
-    const message = `✅ *Pagamento Confirmado!*\n\n🍽️ *Mais Que Cardápio*\n\nOlá! Seu pagamento de *R$ ${parseFloat(payment.amount).toFixed(2)}* foi confirmado com sucesso!\n\n📋 *Plano:* ${payment.plan_name || 'Premium'}\n📅 *Válido até:* ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')}\n\nSeu cardápio está ativo! 🎉\n\n🔗 Acesse: ${BASE_URL}/e/${payment.slug}`;
+    const message = `✅ *Pagamento Confirmado!*\n\n🍽️ *Mais Que Cardápio*\n\nOlá! Seu pagamento de *R$ ${parseFloat(payment.amount).toFixed(2)}* foi confirmado com sucesso!\n\n📋 *Plano:* ${payment.plan_name || 'Premium'}\n📅 *Válido até:* ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')}\n\nSeu cardápio está ativo! 🎉\n\n🔗 Acesse: ${getPublicBaseUrl(req)}/e/${payment.slug}`;
     
     await sendWhatsAppMessage(payment.owner_whatsapp, message, { useSuperAdmin: true });
     await notifySuperAdmin('payment', `✅ *Pagamento Confirmado*\n\n💳 ID: #${paymentId}\n🏪 ${payment.establishment_name}\n💰 R$ ${parseFloat(payment.amount).toFixed(2)}\n📱 ${payment.owner_whatsapp}`);
@@ -3731,7 +3965,7 @@ app.post('/api/superadmin/payments/:id/reject', async (req: any, res) => {
     `, [reason || 'Pagamento rejeitado', paymentId]);
     
     // Notificar cliente
-    const message = `❌ *Pagamento Rejeitado*\n\n🍽️ *Mais Que Cardápio*\n\nOlá! Infelizmente não foi possível confirmar seu pagamento.\n\n${reason ? `*Motivo:* ${reason}` : ''}\n\n🔗 ${BASE_URL}/e/${payment.slug}/admin/assinatura`;
+    const message = `❌ *Pagamento Rejeitado*\n\n🍽️ *Mais Que Cardápio*\n\nOlá! Infelizmente não foi possível confirmar seu pagamento.\n\n${reason ? `*Motivo:* ${reason}` : ''}\n\n🔗 ${getPublicBaseUrl(req)}/e/${payment.slug}/admin/assinatura`;
     
     await sendWhatsAppMessage(payment.owner_whatsapp, message, { useSuperAdmin: true });
     
