@@ -57,6 +57,8 @@ import {
 } from 'lucide-react';
 import { cn, Product, Category, Neighborhood, CartItem, Order, OrderStatus, PaymentStatus, CustomerData, DashboardMetrics } from './types';
 import { LandingPage } from './components/LandingPage';
+import { PromoKitSection } from './components/PromoKitPage';
+import { useSeoMeta } from './utils/seo';
 
 // --- Components ---
 
@@ -504,6 +506,26 @@ const OnlineMenu = ({ slug }: { slug: string }) => {
     address_complement: '',
     address_reference: '',
     notes: ''
+  });
+
+  const storeSeoName = settings.store_name || establishment?.name || slug;
+  const storeSeoImage =
+    settings.cover_url || settings.banner_url || settings.logo_url || '/og-image.jpg';
+  useSeoMeta({
+    title: `${storeSeoName} – Cardápio Digital Online | MaisQueCardapio`,
+    description: `Peça online no cardápio digital de ${storeSeoName}. Delivery rápido, retirada no balcão e pagamento via PIX ou InfinitePay sem taxas extras.`,
+    canonicalPath: `/e/${slug}`,
+    ogType: 'restaurant',
+    image: storeSeoImage,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'Restaurant',
+      name: storeSeoName,
+      url: typeof window !== 'undefined' ? `${window.location.origin}/e/${slug}` : `/e/${slug}`,
+      servesCuisine: 'Lanches, Delivery e Restaurante',
+      hasMenu: typeof window !== 'undefined' ? `${window.location.origin}/e/${slug}` : `/e/${slug}`,
+      acceptsReservations: establishment?.enable_reservations === 1 ? 'True' : 'False'
+    }
   });
 
   const apiFetch = (url: string, options: any = {}) => {
@@ -2318,6 +2340,12 @@ const SubscriptionTab = ({ apiFetch }: { apiFetch: any, settings?: any }) => {
 };
 
 const AdminDashboard = ({ slug }: { slug: string }) => {
+  useSeoMeta({
+    title: `Painel Administrativo (${slug}) | MaisQueCardapio`,
+    description: 'Painel administrativo do estabelecimento no MaisQueCardapio.',
+    canonicalPath: `/e/${slug}/admin`,
+    robots: 'noindex, nofollow'
+  });
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
@@ -5866,6 +5894,12 @@ const AdminDashboard = ({ slug }: { slug: string }) => {
 // LandingPage imported from ./components/LandingPage
 
 const SuperAdmin = () => {
+  useSeoMeta({
+    title: 'SuperAdmin | MaisQueCardapio',
+    description: 'Gerenciamento administrativo da plataforma MaisQueCardapio.',
+    canonicalPath: '/superadmin',
+    robots: 'noindex, nofollow'
+  });
   const [establishments, setEstablishments] = useState<any[]>([]);
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -5905,7 +5939,7 @@ const SuperAdmin = () => {
   const [payments, setPayments] = useState<any[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'pending' | 'confirmed' | 'rejected' | 'all'>('pending');
-  const [superTab, setSuperTab] = useState<'overview' | 'payments' | 'plans' | 'settings'>('overview');
+  const [superTab, setSuperTab] = useState<'overview' | 'payments' | 'plans' | 'settings' | 'divulgacao'>('overview');
   const [platformSettings, setPlatformSettings] = useState<any>({
     contractor_payment_mode: 'both',
     platform_pix_key: '',
@@ -6409,6 +6443,7 @@ const SuperAdmin = () => {
               { id: 'overview', label: 'Clientes' },
               { id: 'payments', label: 'Pagamentos' },
               { id: 'plans', label: 'Planos' },
+              { id: 'divulgacao', label: 'Divulgação' },
               { id: 'settings', label: 'Configurações Globais' },
             ].map((tab) => (
               <button
@@ -6456,6 +6491,10 @@ const SuperAdmin = () => {
             </p>
           </div>
         </div>
+
+        {superTab === 'divulgacao' && (
+          <PromoKitSection />
+        )}
 
         {(superTab === 'overview' || superTab === 'payments') && (
           <section>
@@ -7166,6 +7205,12 @@ const SuperAdmin = () => {
 // --- Order Tracking Component ---
 const OrderTracking = ({ slug }: { slug: string }) => {
   const { id } = useParams();
+  useSeoMeta({
+    title: `Acompanhar Pedido #${id || ''} | MaisQueCardapio`,
+    description: 'Acompanhe o status do seu pedido em tempo real.',
+    canonicalPath: `/e/${slug}/pedido/${id || ''}`,
+    robots: 'noindex, nofollow'
+  });
   const navigate = useNavigate();
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -7672,6 +7717,12 @@ const OrderTracking = ({ slug }: { slug: string }) => {
 
 // --- Customer Orders Component ---
 const CustomerOrders = ({ slug }: { slug: string }) => {
+  useSeoMeta({
+    title: `Meus Pedidos (${slug}) | MaisQueCardapio`,
+    description: 'Consulte o histórico dos seus pedidos.',
+    canonicalPath: `/e/${slug}/meus-pedidos`,
+    robots: 'noindex, nofollow'
+  });
   const navigate = useNavigate();
   const [phone, setPhone] = useState('');
   const [orders, setOrders] = useState<any[]>([]);
@@ -7797,6 +7848,12 @@ const CustomerOrders = ({ slug }: { slug: string }) => {
 
 // --- Subscription Page Component ---
 const SubscriptionPage = ({ slug }: { slug: string }) => {
+  useSeoMeta({
+    title: `Assinatura Premium (${slug}) | MaisQueCardapio`,
+    description: 'Gerencie sua assinatura no MaisQueCardapio.',
+    canonicalPath: `/e/${slug}/admin/assinatura`,
+    robots: 'noindex, nofollow'
+  });
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [subscription, setSubscription] = useState<any>(null);

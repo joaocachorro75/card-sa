@@ -154,7 +154,7 @@ let pool: any = process.env.DB_HOST
 async function initDatabase() {
   try {
     if (!process.env.DB_HOST) {
-      console.log("[AI Studio] DB_HOST not configured — using in-memory mock store");
+      console.log("[Database] DB_HOST not configured — using in-memory mock store");
       return;
     }
     const connection = await pool.getConnection();
@@ -629,7 +629,7 @@ async function initDatabase() {
   connection.release();
   console.log("Database initialized");
   } catch (error) {
-    console.warn("[AI Studio] MySQL not connected — falling back to in-memory mock store:", (error as any)?.message || error);
+    console.warn("[Database] MySQL not connected — falling back to in-memory mock store:", (error as any)?.message || error);
     pool = createMockPool();
   }
 }
@@ -4166,16 +4166,307 @@ app.post('/api/superadmin/cron/check-renewals', async (req: any, res) => {
   res.json({ success: true, ...result });
 });
 
+// ============================================================================
+// SEO: robots.txt, sitemap.xml & Server-Side Meta / OpenGraph / JSON-LD Injection
+// ============================================================================
+const escapeHtmlAttr = (val: string): string =>
+  String(val || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+const escapeXml = (val: string): string =>
+  String(val || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+const resolveSeoImageUrl = (rawUrl: string | undefined | null, baseUrl: string): string => {
+  const trimmed = String(rawUrl || '').trim();
+  if (!trimmed) return `${baseUrl}/og-image.jpg`;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('/')) return `${baseUrl}${trimmed}`;
+  return `${baseUrl}/og-image.jpg`;
+};
+
+async function buildRouteSeoData(reqPath: string, baseUrl: string) {
+  const cleanPath = (reqPath || '/').split('?')[0] || '/';
+  const canonicalPath = cleanPath === '/' ? '/' : cleanPath.replace(/\/+$/, '');
+  const canonicalUrl = `${baseUrl}${canonicalPath}`;
+
+  // Private / transactional routes -> noindex
+  if (cleanPath === '/superadmin' || cleanPath.startsWith('/superadmin/')) {
+    return {
+      title: 'SuperAdmin | MaisQueCardapio',
+      description: 'Gerenciamento administrativo da plataforma MaisQueCardapio.',
+      robots: 'noindex, nofollow',
+      canonicalUrl,
+      ogType: 'website',
+      ogImage: `${baseUrl}/og-image.jpg`,
+      routeJsonLd: null as any
+    };
+  }
+
+  const storeMatch = cleanPath.match(/^\/e\/([^/]+)(\/.*)?$/);
+  if (storeMatch) {
+    const slug = decodeURIComponent(storeMatch[1]);
+    const subPath = storeMatch[2] || '';
+    const isPrivateStoreRoute =
+      subPath.startsWith('/admin') ||
+      subPath.startsWith('/meus-pedidos') ||
+      subPath.startsWith('/pedido');
+
+    let storeName = slug;
+    let storeImage = `${baseUrl}/og-image.jpg`;
+    let acceptsReservations = 'False';
+    try {
+      const [estRows] = await pool.execute(
+        'SELECT id, name, slug, plan_id FROM establishments WHERE slug = ? LIMIT 1',
+        [slug]
+      );
+      const est = (estRows as any[])[0];
+      if (est) {
+        storeName = est.name || slug;
+        const [setRows] = await pool.execute(
+          "SELECT `key`, value FROM settings WHERE establishment_id = ? AND `key` IN ('store_name', 'cover_url', 'banner_url', 'logo_url')",
+          [est.id]
+        );
+        const settingsMap: Record<string, string> = {};
+        for (const r of setRows as any[]) {
+          if (r?.key) settingsMap[r.key] = String(r.value || '');
+        }
+        if (settingsMap.store_name?.trim()) storeName = settingsMap.store_name.trim();
+        storeImage = resolveSeoImageUrl(
+          settingsMap.cover_url || settingsMap.banner_url || settingsMap.logo_url,
+          baseUrl
+        );
+        const features = await getEstablishmentPlanFeatures(est);
+        acceptsReservations = features.enableReservations ? 'True' : 'False';
+      }
+    } catch {
+      // fallback safely if DB query fails
+    }
+
+    if (isPrivateStoreRoute) {
+      return {
+        title: `${storeName} | MaisQueCardapio`,
+        description: `Área de gerenciamento e acompanhamento de pedidos de ${storeName}.`,
+        robots: 'noindex, nofollow',
+        canonicalUrl,
+        ogType: 'website',
+        ogImage: storeImage,
+        routeJsonLd: null as any
+      };
+    }
+
+    return {
+      title: `${storeName} – Cardápio Digital Online | MaisQueCardapio`,
+      description: `Peça online no cardápio digital de ${storeName}. Delivery rápido, retirada no balcão e pagamento via PIX ou InfinitePay sem taxas extras.`,
+      robots: 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1',
+      canonicalUrl,
+      ogType: 'restaurant',
+      ogImage: storeImage,
+      routeJsonLd: {
+        '@context': 'https://schema.org',
+        '@type': 'Restaurant',
+        name: storeName,
+        url: canonicalUrl,
+        image: storeImage,
+        servesCuisine: 'Lanches, Delivery e Restaurante',
+        hasMenu: canonicalUrl,
+        acceptsReservations
+      }
+    };
+  }
+
+  return {
+    title: 'MaisQueCardapio – Cardápio Digital Sem Comissão e Delivery',
+    description:
+      'Crie seu cardápio digital sem comissão por pedido. Delivery por bairro, mesas QR Code, comandas, PIX, InfinitePay e WhatsApp automático.',
+    robots: 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1',
+    canonicalUrl: `${baseUrl}/`,
+    ogType: 'website',
+    ogImage: `${baseUrl}/og-image.jpg`,
+    routeJsonLd: null as any
+  };
+}
+
+async function injectSeoIntoHtml(rawHtml: string, req: any): Promise<string> {
+  const baseUrl = getPublicBaseUrl(req);
+  const seo = await buildRouteSeoData(req.originalUrl || req.path || '/', baseUrl);
+
+  let html = rawHtml
+    .replace(/https:\/\/maisquecardapio\.to-ligado\.com/g, baseUrl)
+    .replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtmlAttr(seo.title)}</title>`)
+    .replace(
+      /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="description" content="${escapeHtmlAttr(seo.description)}" />`
+    )
+    .replace(
+      /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="robots" content="${escapeHtmlAttr(seo.robots)}" />`
+    )
+    .replace(
+      /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i,
+      `<link rel="canonical" href="${escapeHtmlAttr(seo.canonicalUrl)}" />`
+    )
+    .replace(
+      /<meta\s+property="og:type"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:type" content="${escapeHtmlAttr(seo.ogType)}" />`
+    )
+    .replace(
+      /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:url" content="${escapeHtmlAttr(seo.canonicalUrl)}" />`
+    )
+    .replace(
+      /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:title" content="${escapeHtmlAttr(seo.title)}" />`
+    )
+    .replace(
+      /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:description" content="${escapeHtmlAttr(seo.description)}" />`
+    )
+    .replace(
+      /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:image" content="${escapeHtmlAttr(seo.ogImage)}" />`
+    )
+    .replace(
+      /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:title" content="${escapeHtmlAttr(seo.title)}" />`
+    )
+    .replace(
+      /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:description" content="${escapeHtmlAttr(seo.description)}" />`
+    )
+    .replace(
+      /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:image" content="${escapeHtmlAttr(seo.ogImage)}" />`
+    );
+
+  if (seo.routeJsonLd) {
+    const safeJson = JSON.stringify(seo.routeJsonLd).replace(/</g, '\\u003c');
+    html = html.replace(
+      '</head>',
+      `  <script id="mqc-jsonld-route" type="application/ld+json">${safeJson}</script>\n  </head>`
+    );
+  }
+  return html;
+}
+
+app.get('/robots.txt', (req, res) => {
+  const baseUrl = getPublicBaseUrl(req);
+  const robotsTxt = [
+    'User-agent: *',
+    'Allow: /',
+    'Allow: /e/',
+    'Disallow: /api/',
+    'Disallow: /superadmin',
+    'Disallow: /e/*/admin',
+    'Disallow: /e/*/meus-pedidos',
+    'Disallow: /e/*/pedido/',
+    '',
+    `Sitemap: ${baseUrl}/sitemap.xml`,
+    ''
+  ].join('\n');
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.send(robotsTxt);
+});
+
+app.get('/sitemap.xml', async (req, res) => {
+  const baseUrl = getPublicBaseUrl(req);
+  const today = new Date().toISOString().split('T')[0];
+  let storeSlugs: string[] = [];
+  try {
+    const [rows] = await pool.execute(
+      "SELECT slug FROM establishments WHERE status = 'active' ORDER BY id ASC"
+    );
+    storeSlugs = (rows as any[])
+      .map((r) => String(r?.slug || '').trim())
+      .filter(Boolean);
+  } catch {
+    storeSlugs = ['demo'];
+  }
+
+  const urls = [
+    { loc: `${baseUrl}/`, changefreq: 'weekly', priority: '1.0' },
+    ...storeSlugs.map((slug) => ({
+      loc: `${baseUrl}/e/${encodeURIComponent(slug)}`,
+      changefreq: 'daily',
+      priority: '0.8'
+    }))
+  ];
+
+  const xml = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...urls.map(
+      (u) =>
+        `  <url>\n    <loc>${escapeXml(u.loc)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
+    ),
+    '</urlset>',
+    ''
+  ].join('\n');
+
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=1800');
+  res.send(xml);
+});
+
 // Static files
+app.use("/promo", express.static(path.join(__dirname, "public", "promo")));
+app.use("/assets", express.static(path.join(__dirname, "public", "assets")));
+app.get(["/favicon.svg", "/og-image.jpg", "/site.webmanifest"], (req, res) => {
+  const filePath = path.join(__dirname, "public", req.path.replace(/^\/+/, ""));
+  if (fs.existsSync(filePath)) {
+    return res.sendFile(filePath);
+  }
+  return res.status(404).end();
+});
+
 if (process.env.NODE_ENV !== "production") {
   const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
+  app.use(async (req, res, next) => {
+    const reqPath = req.path || "/";
+    const isSpaHtmlRequest =
+      req.method === "GET" &&
+      !reqPath.startsWith("/api/") &&
+      !reqPath.startsWith("/@") &&
+      !reqPath.startsWith("/src/") &&
+      !reqPath.startsWith("/node_modules/") &&
+      !path.extname(reqPath) &&
+      (req.headers.accept?.includes("text/html") || req.headers.accept === "*/*" || !req.headers.accept);
+
+    if (!isSpaHtmlRequest) {
+      return next();
+    }
+
+    try {
+      const rawTemplate = fs.readFileSync(path.resolve(__dirname, "index.html"), "utf-8");
+      const transformed = await vite.transformIndexHtml(req.originalUrl, rawTemplate);
+      const html = await injectSeoIntoHtml(transformed, req);
+      res.status(200).setHeader("Content-Type", "text/html; charset=utf-8").send(html);
+    } catch (err) {
+      vite.ssrFixStacktrace(err as Error);
+      next(err);
+    }
+  });
   app.use(vite.middlewares);
 } else {
   const distPath = path.join(__dirname, "dist");
   app.use(express.static(distPath, { index: false }));
-  app.get("*", (req, res) => {
+  app.get("*", async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    res.sendFile(path.join(distPath, "index.html"));
+    try {
+      const rawHtml = fs.readFileSync(path.join(distPath, "index.html"), "utf-8");
+      const html = await injectSeoIntoHtml(rawHtml, req);
+      res.setHeader("Content-Type", "text/html; charset=utf-8").send(html);
+    } catch {
+      res.sendFile(path.join(distPath, "index.html"));
+    }
   });
 }
 

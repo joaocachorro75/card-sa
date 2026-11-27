@@ -21,6 +21,7 @@ import {
   Receipt
 } from 'lucide-react';
 import { cn } from '../types';
+import { useSeoMeta } from '../utils/seo';
 import kitchenPassImg from '../assets/images/landing_kitchen_pass_1795532828157.jpg';
 import tableQrImg from '../assets/images/landing_table_qr_1795532826077.jpg';
 
@@ -114,6 +115,15 @@ const FAQ_ITEMS = [
 ];
 
 export const LandingPage: React.FC = () => {
+  useSeoMeta({
+    title: 'MaisQueCardapio – Cardápio Digital Sem Comissão e Delivery',
+    description:
+      'Crie seu cardápio digital sem comissão por pedido. Delivery por bairro, mesas QR Code, comandas, PIX, InfinitePay e WhatsApp automático.',
+    canonicalPath: '/',
+    ogType: 'website',
+    image: '/og-image.jpg'
+  });
+
   const [formData, setFormData] = useState({ name: '', slug: '', owner_whatsapp: '', password: '' });
   const [slugTouched, setSlugTouched] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<'free' | 'premium'>('free');

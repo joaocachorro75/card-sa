@@ -1,0 +1,18 @@
+{
+  "name": "MaisQueCardapio – Cardápio Digital Sem Comissão",
+  "short_name": "MaisQueCardapio",
+  "description": "Sistema completo de cardápio digital, delivery por bairro, mesas QR Code, comandas, PIX, InfinitePay e WhatsApp automático sem comissão por pedido.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#f97316",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

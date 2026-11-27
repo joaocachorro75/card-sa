@@ -1,4 +1,4 @@
-// In-memory mock pool for mysql2/promise when MySQL is not available (e.g., AI Studio sandbox)
+// In-memory mock pool for mysql2/promise when MySQL is not available (local/dev fallback)
 
 interface Store {
   plans: any[];

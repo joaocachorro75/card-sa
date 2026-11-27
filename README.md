@@ -1,20 +1,29 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# MaisQueCardapio
 
-# Run and deploy your AI Studio app
+Plataforma completa de cardápio digital sem comissão por pedido, delivery por bairro, mesas com QR Code, comandas, reservas, pagamentos via PIX ou InfinitePay e notificações automáticas no WhatsApp.
 
-This contains everything you need to run your app locally.
+## Desenvolvimento Local
 
-View your app in AI Studio: https://ai.studio/apps/07bfc504-33b4-4463-9373-aa7003c88356
+**Pré-requisitos:** Node.js 20+
 
-## Run Locally
+1. Instale as dependências:
+   ```bash
+   npm install
+   ```
+2. Configure as variáveis de ambiente (opcional em ambiente local — caso `DB_HOST` não esteja definido, o servidor utiliza armazenamento em memória para desenvolvimento):
+   ```bash
+   cp .env.example .env
+   ```
+3. Inicie em modo de desenvolvimento:
+   ```bash
+   npm run dev
+   ```
 
-**Prerequisites:**  Node.js
+## Build e Produção
 
+```bash
+npm run build
+npm start
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Consulte [DEPLOY.md](./DEPLOY.md) para instruções de deploy com MySQL e Docker/EasyPanel.
